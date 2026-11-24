@@ -10,10 +10,14 @@ interface TitleScreenProps {
 export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuildings, totalInteriors }) => {
   const [starter, setStarter] = useState<ProtagonistId>('jason');
 
+  const isNativeApp =
+    typeof window !== 'undefined' &&
+    Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+
   return (
-    <div className="fixed inset-0 z-30 flex flex-col justify-between p-8 md:p-12 pointer-events-auto bg-gradient-to-r from-[#0a0b12]/90 via-[#0a0b12]/55 to-transparent">
+    <div className="fixed inset-0 z-30 flex flex-col justify-between p-5 sm:p-8 md:p-12 overflow-y-auto pointer-events-auto bg-gradient-to-r from-[#0a0b12]/90 via-[#0a0b12]/55 to-transparent">
       {/* Top quiet descriptor */}
-      <div className="flex items-center justify-between text-xs tracking-wider text-neutral-300">
+      <div className="flex items-center justify-between text-xs tracking-wider text-neutral-300 gap-3">
         <span>LEONIDA &amp; VICE CITY OPEN WORLD</span>
         <span className="font-mono-num text-neutral-400">
           {totalBuildings} Buildings · {totalInteriors} Seamless Interiors · 32 Activities
@@ -21,7 +25,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuilding
       </div>
 
       {/* Main Left-Aligned Lockup leaving 40%+ right viewport open to live 3D Vice City */}
-      <div className="max-w-xl my-auto space-y-6">
+      <div className="max-w-xl my-auto py-4 space-y-5">
         {/* Bespoke SVG Title Lockup */}
         <svg viewBox="0 0 540 132" className="w-full max-w-lg h-auto" aria-label="Vice Bound Leonida">
           <defs>
@@ -56,7 +60,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuilding
           </text>
         </svg>
 
-        <p className="text-neutral-200 text-base leading-relaxed max-w-md">
+        <p className="text-neutral-200 text-sm sm:text-base leading-relaxed max-w-md">
           Switch seamlessly between Jason and Lucia across sunlit Vice Beach, Neon Ocean Drive, and Leonida Bay. Pull
           off clean heists, outsmart 6-star police AI, or dive the reef.
         </p>
@@ -68,33 +72,33 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuilding
             <button
               type="button"
               onClick={() => setStarter('jason')}
-              className={`text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+              className={`text-left p-3 sm:p-3.5 rounded-lg border transition-colors cursor-pointer ${
                 starter === 'jason'
                   ? 'bg-[#1a1d2b] border-[#ff6b6b] text-white'
                   : 'bg-[#11131d]/90 border-white/10 text-neutral-300 hover:border-white/25'
               }`}
             >
-              <div className="font-display font-bold text-base">Jason Duval</div>
+              <div className="font-display font-bold text-sm sm:text-base">Jason Duval</div>
               <div className="text-xs text-neutral-400 mt-0.5">Wheelman · Starts Unarmed (Armory Ready)</div>
             </button>
 
             <button
               type="button"
               onClick={() => setStarter('lucia')}
-              className={`text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+              className={`text-left p-3 sm:p-3.5 rounded-lg border transition-colors cursor-pointer ${
                 starter === 'lucia'
                   ? 'bg-[#1a1d2b] border-[#2dd4bf] text-white'
                   : 'bg-[#11131d]/90 border-white/10 text-neutral-300 hover:border-white/25'
               }`}
             >
-              <div className="font-display font-bold text-base">Lucia Caminos</div>
+              <div className="font-display font-bold text-sm sm:text-base">Lucia Caminos</div>
               <div className="text-xs text-neutral-400 mt-0.5">Infiltrator · Smart Companion AI</div>
             </button>
           </div>
         </div>
 
-        {/* Primary Start CTA */}
-        <div className="pt-1 flex items-center gap-4">
+        {/* Primary Start CTA + Android APK Download */}
+        <div className="pt-1 flex flex-wrap items-center gap-3 sm:gap-4">
           <button
             type="button"
             onClick={() => onStart(starter)}
@@ -102,7 +106,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuilding
           >
             Enter Leonida
           </button>
-          <span className="text-xs text-neutral-400">Press Enter or Space</span>
+          {!isNativeApp && (
+            <a
+              href="/apk/prime-vice-city.apk"
+              download="prime-vice-city.apk"
+              className="px-5 py-3.5 rounded-lg font-display font-semibold text-sm bg-[#11131d]/90 hover:bg-[#1a1d2b] border border-[#2dd4bf]/60 text-[#2dd4bf] transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Download Android .APK
+            </a>
+          )}
+          <span className="text-xs text-neutral-400 hidden sm:inline">Press Enter or Space</span>
         </div>
       </div>
 
