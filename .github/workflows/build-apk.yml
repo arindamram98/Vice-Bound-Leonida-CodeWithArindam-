@@ -22,11 +22,22 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install & Build Web
+      - name: Install Dependencies & Capacitor
         run: |
           npm install --legacy-peer-deps
+          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
+
+      - name: Build Web & Setup Android App Name
+        run: |
           npm run build
+          if [ ! -d "android" ]; then
+            npx cap init "Vice Bound Leonida" "com.vicebound.leonida" --web-dir=dist
+            npx cap add android
+          fi
           npx cap sync android
+          sed -i 's/android:name=".MainActivity"/android:name=".MainActivity" android:screenOrientation="sensorLandscape"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">Vice Bound Leonida<\/string>/' android/app/src/main/res/values/strings.xml
+          sed -i 's/<string name="title_activity_main">.*<\/string>/<string name="title_activity_main">Vice Bound Leonida<\/string>/' android/app/src/main/res/values/strings.xml
 
       - name: Build Debug APK
         run: |
@@ -34,13 +45,10 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-
-      - name: Rename APK
-        run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/prime-vice-city.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Vice-Bound-Leonida.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: prime-vice-city-apk
-          path: android/app/build/outputs/apk/debug/prime-vice-city.apk
+          name: Vice-Bound-Leonida-APK
+          path: android/app/build/outputs/apk/debug/Vice-Bound-Leonida.apk
