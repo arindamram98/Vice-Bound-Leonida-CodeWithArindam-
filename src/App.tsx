@@ -48,6 +48,10 @@ export default function App() {
           onStart={(starter) => engine?.startGame(starter)}
           totalBuildings={hud.totalBuildingsCount}
           totalInteriors={hud.totalInteriorsCount}
+          controlSettings={hud.controlSettings}
+          onToggleTouchControls={() =>
+            engine?.updateControlSettings({ touchControls: !hud.controlSettings.touchControls })
+          }
         />
       )}
 
@@ -64,6 +68,7 @@ export default function App() {
           onCycleRadio={() => engine?.cycleRadioStation()}
           onToggleMute={() => engine?.toggleMute()}
           onToggleSlowMo={() => engine?.toggleSlowMo()}
+          onCycleWeapon={(dir) => engine?.cycleWeapon(dir)}
           onRespawn={() => engine?.respawnPlayer()}
         />
       )}
@@ -74,11 +79,15 @@ export default function App() {
           onMoveInput={(nx, nz) => engine.setTouchMoveInput(nx, nz)}
           onCameraLookDelta={(dyaw, dpitch) => engine.addCameraLookDelta(dyaw, dpitch)}
           onAttack={() => engine.triggerPrimaryAttackPublic()}
-          onAimChange={(active) => engine.triggerSecondaryAim(active)}
+          onAimChange={(active) => engine.setAiming(active)}
+          onToggleAim={() => engine.toggleAim()}
+          onReload={() => engine.triggerReloadPublic()}
           onJump={() => engine.triggerJumpTouch()}
           onSprintToggle={(active) => engine.setSprintingTouch(active)}
           onVehicleInteract={() => engine.triggerVehicleInteractPublic()}
           onContextInteract={() => engine.triggerContextInteractPublic()}
+          onVehicleInputs={(inputs) => engine.setVehicleTouchInputs(inputs)}
+          onHorn={() => engine.triggerHorn()}
           onThrowThrowable={() => {
             const p = hud.protagonists[hud.activeId];
             if (p.equippedWeaponId === 'molotov' || (p.grenades <= 0 && p.molotovs > 0)) {

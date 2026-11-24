@@ -628,12 +628,14 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
             </div>
           </div>
 
-          <div className="text-xs text-neutral-300 space-y-1.5 bg-[#151825] p-3.5 rounded-xl border border-white/10">
-            <div><strong className="text-white">On Foot:</strong> W A S D · Shift Sprint · Space Jump · C Crouch · X Prone · Alt Dodge</div>
-            <div><strong className="text-white">Interact / Shops:</strong> E near Doors, Clothes, Armory, Bungalows, Bed, Burger Shot, or Lucia</div>
-            <div><strong className="text-white">Combat &amp; Wheel:</strong> Click Attack · Right Click Aim/Scope · Q Weapon Wheel · 1-9 Quick Select · H Throw · CapsLock Focus · R Reload</div>
-            <div><strong className="text-white">Vehicles &amp; Map:</strong> F Board/Bailout · B Call Lucia · K Partner In/Out · M Full GPS Map · P Phone</div>
-          </div>
+          {!cs.touchControls && cs.pcKeyHints && (
+            <div className="text-xs text-neutral-300 space-y-1.5 bg-[#151825] p-3.5 rounded-xl border border-white/10">
+              <div><strong className="text-white">On Foot:</strong> W A S D · Shift Sprint · Space Jump · C Crouch · X Prone · Alt Dodge</div>
+              <div><strong className="text-white">Interact / Shops:</strong> E near Doors, Clothes, Armory, Bungalows, Bed, Burger Shot, or Lucia</div>
+              <div><strong className="text-white">Combat &amp; Wheel:</strong> Click Attack · Right Click Aim/Scope · Q Weapon Wheel · 1-9 Quick Select · H Throw · CapsLock Focus · R Reload</div>
+              <div><strong className="text-white">Vehicles &amp; Map:</strong> F Board/Bailout · B Call Lucia · K Partner In/Out · M Full GPS Map · P Phone</div>
+            </div>
+          )}
           <button
             type="button"
             onClick={onClose}

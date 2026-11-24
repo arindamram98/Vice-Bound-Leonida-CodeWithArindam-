@@ -1,27 +1,53 @@
 import React, { useState } from 'react';
-import { ProtagonistId } from '../game/types';
+import { ControlSettings, ProtagonistId } from '../game/types';
 
 interface TitleScreenProps {
   onStart: (starter: ProtagonistId) => void;
   totalBuildings: number;
   totalInteriors: number;
+  controlSettings?: ControlSettings;
+  onToggleTouchControls?: () => void;
 }
 
-export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuildings, totalInteriors }) => {
+export const TitleScreen: React.FC<TitleScreenProps> = ({
+  onStart,
+  totalBuildings,
+  totalInteriors,
+  controlSettings,
+  onToggleTouchControls,
+}) => {
   const [starter, setStarter] = useState<ProtagonistId>('jason');
 
   const isNativeApp =
     typeof window !== 'undefined' &&
     Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
 
+  const touchMode = Boolean(controlSettings?.touchControls);
+  const showPcHints = Boolean(controlSettings?.pcKeyHints) && !touchMode;
+
   return (
     <div className="fixed inset-0 z-30 flex flex-col justify-between p-5 sm:p-8 md:p-12 overflow-y-auto pointer-events-auto bg-gradient-to-r from-[#0a0b12]/90 via-[#0a0b12]/55 to-transparent">
-      {/* Top quiet descriptor */}
-      <div className="flex items-center justify-between text-xs tracking-wider text-neutral-300 gap-3">
+      {/* Top quiet descriptor + Mobile UI Quick Switch */}
+      <div className="flex flex-wrap items-center justify-between text-xs tracking-wider text-neutral-300 gap-3">
         <span>LEONIDA &amp; VICE CITY OPEN WORLD</span>
-        <span className="font-mono-num text-neutral-400">
-          {totalBuildings} Buildings · {totalInteriors} Seamless Interiors · 32 Activities
-        </span>
+        <div className="flex items-center gap-3">
+          {onToggleTouchControls && (
+            <button
+              type="button"
+              onClick={onToggleTouchControls}
+              className={`px-3 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                touchMode
+                  ? 'bg-[#2dd4bf] border-[#2dd4bf] text-neutral-950'
+                  : 'bg-[#11131d]/90 border-white/15 text-neutral-300 hover:border-white/30'
+              }`}
+            >
+              Mobile Touch UI: {touchMode ? 'ON' : 'OFF'}
+            </button>
+          )}
+          <span className="font-mono-num text-neutral-400">
+            {totalBuildings} Buildings · {totalInteriors} Seamless Interiors · 32 Activities
+          </span>
+        </div>
       </div>
 
       {/* Main Left-Aligned Lockup leaving 40%+ right viewport open to live 3D Vice City */}
@@ -115,14 +141,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, totalBuilding
               Download Android .APK
             </a>
           )}
-          <span className="text-xs text-neutral-400 hidden sm:inline">Press Enter or Space</span>
+          {showPcHints && <span className="text-xs text-neutral-400 hidden sm:inline">Press Enter or Space</span>}
         </div>
       </div>
 
-      {/* Single flat control-hint line */}
-      <div className="text-xs text-neutral-300 font-mono-num">
-        WASD Move · Q Weapon Wheel · Click Attack · CapsLock Focus · H Throw · F Vehicles/Boats/Planes · E Interact · Tab Switch · K Partner · M GPS Map · P Phone
-      </div>
+      {/* PC Control Hints (completely hidden in Mobile Touch UI mode) */}
+      {showPcHints ? (
+        <div className="text-xs text-neutral-300 font-mono-num">
+          WASD Move · Q Weapon Wheel · Click Attack · CapsLock Focus · H Throw · F Vehicles/Boats/Planes · E Interact · Tab Switch · K Partner · M GPS Map · P Phone
+        </div>
+      ) : (
+        <div className="text-xs text-[#2dd4bf]/90 font-medium">
+          Touch Controls Active — Dual Thumbstick, Pedals, Aim &amp; Fullscreen Map Ready
+        </div>
+      )}
     </div>
   );
 };

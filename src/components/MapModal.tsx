@@ -375,21 +375,27 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
 
   const filteredDirectory = filter === 'All' ? LANDMARKS : LANDMARKS.filter((l) => l.category === filter);
 
+  const showHints = hud.controlSettings.pcKeyHints && !hud.controlSettings.touchControls;
+
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-3 sm:p-4 pointer-events-auto">
-      <div className="bg-[#0d1018] border border-white/15 rounded-2xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-2 sm:p-4 pointer-events-auto">
+      <div className="bg-[#0d1018] border border-white/15 rounded-2xl w-[94vw] h-[88dvh] flex flex-col overflow-hidden shadow-2xl">
         {/* Top Bar */}
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-white/10 bg-[#121622]">
-          <div className="flex items-center gap-3">
-            <Compass className="w-5 h-5 text-[#38bdf8]" />
-            <div>
-              <h2 className="font-display font-bold text-base text-white">Leonida Dual-Island &amp; Safehouse Map</h2>
-              <p className="text-[11px] text-neutral-400">
-                Scroll or +/- to zoom · Drag to pan · Click to drop bright-blue GPS route · [M] or Esc to close
+        <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 border-b border-white/10 bg-[#121622] shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <Compass className="w-5 h-5 text-[#38bdf8] shrink-0" />
+            <div className="min-w-0">
+              <h2 className="font-display font-bold text-sm sm:text-base text-white truncate">
+                Leonida Dual-Island &amp; Safehouse Map
+              </h2>
+              <p className="text-[11px] text-neutral-400 truncate">
+                {showHints
+                  ? 'Scroll or +/- to zoom · Drag to pan · Click to drop bright-blue GPS route · [M] or Esc to close'
+                  : 'Use +/- to zoom · Drag to pan · Tap anywhere to drop blue GPS route'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {hud.waypoint && (
               <div className="hidden md:flex text-xs text-[#38bdf8] font-medium items-center gap-1 mr-2">
                 <Navigation className="w-3.5 h-3.5" /> GPS: {hud.waypoint.label}
@@ -440,7 +446,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
         </div>
 
         {/* Category Filter Bar */}
-        <div className="px-4 py-2 border-b border-white/10 bg-[#0f131f] flex items-center gap-1.5 overflow-x-auto">
+        <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-[#0f131f] flex items-center gap-1.5 overflow-x-auto shrink-0">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -453,12 +459,14 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
               {cat}
             </button>
           ))}
-          <span className="ml-auto text-[11px] font-mono-num text-neutral-400">Zoom {zoom.toFixed(1)}x</span>
+          <span className="ml-auto text-[11px] font-mono-num text-neutral-400 pl-2 shrink-0">
+            Zoom {zoom.toFixed(1)}x
+          </span>
         </div>
 
         {/* Map Canvas + Right Directory */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0">
-          <div className="lg:col-span-8 p-3 sm:p-4 flex flex-col gap-2.5 min-h-0 bg-[#0a0c13]">
+        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 min-h-0 overflow-hidden">
+          <div className="lg:col-span-8 p-2.5 sm:p-4 flex-1 flex flex-col gap-2 min-h-[46dvh] lg:min-h-0 bg-[#0a0c13]">
             <div className="relative flex-1 min-h-0 flex items-center justify-center">
               <canvas
                 ref={canvasRef}
@@ -468,6 +476,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
                 className="w-full h-full max-h-full object-contain rounded-xl border border-white/15 cursor-grab active:cursor-grabbing bg-[#0c3b55] touch-none"
               />
             </div>

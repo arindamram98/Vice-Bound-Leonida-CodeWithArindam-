@@ -9,10 +9,19 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
     font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
     background-color: #09090d;
     color: #f4f4f6;
   }
+}
+
+.safe-area-pad {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+  padding-right: max(0.625rem, env(safe-area-inset-right));
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+  padding-left: max(0.625rem, env(safe-area-inset-left));
 }
 
 .font-display {

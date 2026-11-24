@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Activity,
+  ArrowLeft,
   Briefcase,
   Building2,
   Car,
@@ -8,6 +9,7 @@ import {
   Headphones,
   Heart,
   HeartPulse,
+  Home,
   Landmark,
   MapPin,
   MessageSquare,
@@ -86,6 +88,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   const [customMsg, setCustomMsg] = useState('');
   const player = hud.protagonists[hud.activeId];
   const partnerName = hud.activeId === 'jason' ? 'Lucia Caminos' : 'Jason Duval';
+  const showHints = hud.controlSettings.pcKeyHints && !hud.controlSettings.touchControls;
 
   const handleSendCustom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,10 +98,10 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   };
 
   return (
-    <div className="fixed right-4 bottom-20 z-35 w-[360px] h-[545px] max-h-[78vh] pointer-events-auto">
-      <div className="bg-[#0b0d15] border-2 border-neutral-700/90 rounded-[28px] w-full h-full flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3 pointer-events-auto">
+      <div className="h-[82dvh] max-h-[82dvh] aspect-[9/18] max-w-[92vw] min-w-[270px] bg-[#0b0d15] border-[3px] border-neutral-700/90 rounded-[30px] flex flex-col overflow-hidden shadow-2xl">
         {/* GTA Phone Top Speaker Notch & Status */}
-        <div className="px-4 pt-2.5 pb-2 bg-[#121624] border-b border-white/10">
+        <div className="px-4 pt-2.5 pb-2 bg-[#121624] border-b border-white/10 shrink-0">
           <div className="w-14 h-1 rounded-full bg-neutral-700 mx-auto mb-2" />
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-mono-num text-neutral-300">{hud.timeOfDayLabel}</span>
@@ -180,7 +183,9 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                   className="w-full py-2 px-3 rounded-lg bg-[#2dd4bf]/15 hover:bg-[#2dd4bf]/25 border border-[#2dd4bf]/40 text-[#2dd4bf] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Car className="w-3.5 h-3.5" />
-                  {hud.relationship.partnerInVehicleId ? 'Let Partner Exit Vehicle [K]' : 'Invite Partner Into Car [K]'}
+                  {hud.relationship.partnerInVehicleId
+                    ? `Let Partner Exit Vehicle${showHints ? ' [K]' : ''}`
+                    : `Invite Partner Into Car${showHints ? ' [K]' : ''}`}
                 </button>
               )}
 
@@ -490,7 +495,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                     onClick={onCycleRadio}
                     className="px-2 py-0.5 rounded bg-purple-500/25 text-purple-200 text-[10px] font-semibold cursor-pointer"
                   >
-                    Switch FM [R]
+                    Switch FM{showHints ? ' [R]' : ''}
                   </button>
                 </div>
                 <button
@@ -500,7 +505,10 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                     hud.earphonesOn ? 'bg-[#2dd4bf] text-neutral-950' : 'bg-white/10 text-neutral-300'
                   }`}
                 >
-                  <Headphones className="w-3.5 h-3.5" /> {hud.earphonesOn ? 'Earphones Active on Foot [V]' : 'Put On Earphones [V]'}
+                  <Headphones className="w-3.5 h-3.5" />{' '}
+                  {hud.earphonesOn
+                    ? `Earphones Active on Foot${showHints ? ' [V]' : ''}`
+                    : `Put On Earphones${showHints ? ' [V]' : ''}`}
                 </button>
               </div>
 
@@ -583,7 +591,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                 onClick={onOpenMap}
                 className="w-full py-2.5 rounded-xl bg-[#2dd4bf] hover:bg-[#14b8a6] text-neutral-950 font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Compass className="w-4 h-4" /> Open Full 5-City Interactive Map [M]
+                <Compass className="w-4 h-4" /> Open Full 5-City Interactive Map{showHints ? ' [M]' : ''}
               </button>
               {[
                 { name: "Jason's Villa (Home & Gym)", x: 210, z: 210 },
@@ -630,6 +638,34 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Phone Bottom Navigation Bar (Back / Home / Close) */}
+        <div className="px-4 py-2 bg-[#121624] border-t border-white/10 flex items-center justify-around shrink-0">
+          <button
+            type="button"
+            onClick={() => (tab !== 'messages' ? setTab('messages') : onClose())}
+            className="px-3 py-1 rounded-lg hover:bg-white/10 text-neutral-300 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('messages')}
+            className="px-4 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 text-[11px] font-semibold cursor-pointer"
+            aria-label="Home"
+          >
+            <Home className="w-3.5 h-3.5" /> Home
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1 rounded-lg hover:bg-rose-500/20 text-rose-300 flex items-center gap-1 text-[11px] cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="w-3.5 h-3.5" /> Exit
+          </button>
         </div>
       </div>
     </div>

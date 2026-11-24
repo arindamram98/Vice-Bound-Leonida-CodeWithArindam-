@@ -28,10 +28,13 @@ export type HairId = 'classic' | 'fade' | 'slick' | 'braids';
 export type WeatherType = 'sunny' | 'sunset' | 'cloudy' | 'rain' | 'storm';
 export type PartnerState = 'home' | 'coming' | 'following' | 'driving_to_player' | 'in_car';
 
+export type GameLanguage = 'en' | 'hinglish';
+
 export interface ControlSettings {
   touchControls: boolean;
   pcKeyHints: boolean;
   autoDetectedMobile: boolean;
+  language: GameLanguage;
 }
 
 export interface NpcSubtitle {
@@ -97,7 +100,8 @@ export interface ProtagonistState {
   focusMeter: number;
   maxFocusMeter: number;
   stats: ProtagonistStats;
-  weapons: WeaponItem[];
+    weapons: WeaponItem[];
+  ownedWeapons: string[];
   equippedWeaponId: string; // 'fists' or WeaponItem['id']
   pistols: WeaponItem[];
   longGun: WeaponItem | null;
@@ -227,6 +231,8 @@ export interface VehicleState {
   trunkLoot: number;
   trunkOutfits: OutfitId[];
   colorHex: string;
+  nitroCharge?: number;
+  nitroActive?: boolean;
 }
 
 export type BuildingArchStyle =
@@ -471,6 +477,7 @@ export interface HudSnapshot {
   profile: CriminalProfile;
   wanted: WantedState;
   drivingVehicle: VehicleState | null;
+  nearbyVehicle: VehicleState | null;
   nearbyTrunkVehicle: VehicleState | null;
   currentDistrict: string;
   currentInterior: InteriorInfo | null;
@@ -484,6 +491,7 @@ export interface HudSnapshot {
   aiming: boolean;
   contextPrompt: string | null;
   contextAction: string | null;
+  contextKind: 'door' | 'shop' | 'npc' | 'activity' | 'seat' | 'fuel' | null;
   waypoint: { x: number; z: number; label: string } | null;
   gpsRoute: Array<{ x: number; z: number }>;
   activeMission: MissionDef | null;

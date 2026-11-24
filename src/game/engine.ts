@@ -529,6 +529,7 @@ export class ViceCityEngine {
 
   private vehicles: WorldVehicle[] = [];
   private drivingVehicle: WorldVehicle | null = null;
+  private nearbyVehicle: WorldVehicle | null = null;
   private nearbyTrunkVehicle: WorldVehicle | null = null;
   private boardingSeq: PlayerBoardingSequence | null = null;
   private exitingSeq: ExitingSequence | null = null;
@@ -582,6 +583,11 @@ export class ViceCityEngine {
   private touchMoveX = 0;
   private touchMoveZ = 0;
   private touchSprinting = false;
+  private touchGas = 0;
+  private touchBrake = 0;
+  private touchSteer = 0;
+  private touchHandbrake = false;
+  private touchNitro = false;
   private controlSettings: ControlSettings = (() => {
     const isTouchCapable =
       typeof window !== 'undefined' &&
@@ -590,6 +596,7 @@ export class ViceCityEngine {
       touchControls: isTouchCapable,
       pcKeyHints: !isTouchCapable,
       autoDetectedMobile: isTouchCapable,
+      language: 'en',
     };
   })();
   private stareTargetId: string | null = null;
@@ -620,6 +627,7 @@ export class ViceCityEngine {
   private contextPrompt: string | null = null;
   private contextAction: (() => void) | null = null;
   private contextActionLabel: string | null = null;
+  private contextKind: HudSnapshot['contextKind'] = null;
 
   constructor(container: HTMLElement, callbacks: EngineCallbacks) {
     this.container = container;
@@ -648,6 +656,7 @@ export class ViceCityEngine {
         maxFocusMeter: 100,
         stats: { muscle: 45, stamina: 50, focus: 50 },
         weapons: [],
+        ownedWeapons: [],
         equippedWeaponId: 'fists',
         pistols: [],
         longGun: null,
@@ -705,6 +714,7 @@ export class ViceCityEngine {
         maxFocusMeter: 100,
         stats: { muscle: 38, stamina: 58, focus: 58 },
         weapons: [],
+        ownedWeapons: [],
         equippedWeaponId: 'fists',
         pistols: [],
         longGun: null,
@@ -789,7 +799,7 @@ export class ViceCityEngine {
 
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(62, w / h, 0.25, 1450);
+    this.camera = new THREE.PerspectiveCamera(65, w / h, 0.25, 1450);
 
     this.hemiLight = new THREE.HemisphereLight(0x7cc4f8, 0x3b2d24, 0.34);
     this.scene.add(this.hemiLight);
@@ -2156,7 +2166,12 @@ export class ViceCityEngine {
       return;
     }
     if (e.button === 0) {
-      if (this.activeModal === null && document.pointerLockElement !== this.renderer.domElement && !this.isSoftwareGl) {
+      if (
+        this.activeModal === null &&
+        !this.controlSettings.touchControls &&
+        document.pointerLockElement !== this.renderer.domElement &&
+        !this.isSoftwareGl
+      ) {
         this.renderer.domElement.requestPointerLock?.();
       }
       this.triggerPrimaryAttack();
@@ -2340,7 +2355,12 @@ export class ViceCityEngine {
     this.screen = 'playing';
     this.activeModal = null;
     const partnerName = starter === 'jason' ? 'Lucia' : 'Jason';
-    this.showToast(`Jason's Villa · Talk to ${partnerName} [E], Phone [P], Map [M]`);
+    const hideHints = this.controlSettings.touchControls || !this.controlSettings.pcKeyHints;
+    this.showToast(
+      hideHints
+        ? `Jason's Villa · Talk to ${partnerName} or explore Vice City`
+        : `Jason's Villa · Talk to ${partnerName} [E], Phone [P], Map [M]`
+    );
     this.pushHud();
   }
 
@@ -2681,9 +2701,28 @@ export class ViceCityEngine {
   }
 
   private syncProtagonistWeapons(p: ProtagonistState) {
+    // Keep every unlocked weapon persistent across ownedWeapons + weapons array
+    for (const w of p.weapons) {
+      if (!p.ownedWeapons.includes(w.id)) {
+        p.ownedWeapons.push(w.id);
+      }
+    }
+    for (const id of p.ownedWeapons) {
+      if (WEAPON_CATALOG[id] && !p.weapons.some((w) => w.id === id)) {
+        p.weapons.push(cloneWeapon(WEAPON_CATALOG[id]));
+      }
+    }
     p.pistols = p.weapons.filter((w) => w.category === 'pistol').slice(0, 2);
-    p.longGun = p.weapons.find((w) => w.category === 'smg' || w.category === 'shotgun' || w.category === 'rifle' || w.category === 'sniper' || w.category === 'heavy') ?? null;
-    if (p.equippedWeaponId === 'fists') {
+    p.longGun =
+      p.weapons.find(
+        (w) =>
+          w.category === 'smg' ||
+          w.category === 'shotgun' ||
+          w.category === 'rifle' ||
+          w.category === 'sniper' ||
+          w.category === 'heavy'
+      ) ?? null;
+    if (p.equippedWeaponId === 'fists' || p.equippedWeaponId === 'grenades' || p.equippedWeaponId === 'molotov') {
       p.equippedSlot = 'unarmed';
     } else {
       const active = p.weapons.find((w) => w.id === p.equippedWeaponId);
@@ -2696,6 +2735,22 @@ export class ViceCityEngine {
         p.equippedSlot = 'longgun';
       }
     }
+  }
+
+  public cycleWeapon(dir: 1 | -1 = 1) {
+    const p = this.protagonists[this.activeId];
+    this.syncProtagonistWeapons(p);
+    const list: string[] = ['fists', ...p.weapons.map((w) => w.id)];
+    if (p.grenades > 0) list.push('grenades');
+    if (p.molotovs > 0) list.push('molotov');
+    if (list.length <= 1) {
+      this.selectWeapon('fists');
+      return;
+    }
+    const idx = list.indexOf(p.equippedWeaponId);
+    const cur = idx >= 0 ? idx : 0;
+    const next = (cur + dir + list.length) % list.length;
+    this.selectWeapon(list[next]);
   }
 
   public selectWeapon(weaponId: string) {
@@ -2716,7 +2771,11 @@ export class ViceCityEngine {
       p.equippedWeaponId = 'grenades';
       p.equippedSlot = 'unarmed';
       viceAudio.playUiChime(true);
-      this.showToast(`Equipped: Frag Grenades (${p.grenades}) — Press [H] or Click to throw!`);
+      this.showToast(
+        this.controlSettings.touchControls
+          ? `Equipped: Frag Grenades (${p.grenades})`
+          : `Equipped: Frag Grenades (${p.grenades}) — Press [H] or Click to throw!`
+      );
       this.pushHud();
       return;
     }
@@ -2728,7 +2787,11 @@ export class ViceCityEngine {
       p.equippedWeaponId = 'molotov';
       p.equippedSlot = 'unarmed';
       viceAudio.playUiChime(true);
-      this.showToast(`Equipped: Molotov (${p.molotovs}) — Press [H] or Click to throw!`);
+      this.showToast(
+        this.controlSettings.touchControls
+          ? `Equipped: Molotov (${p.molotovs})`
+          : `Equipped: Molotov (${p.molotovs}) — Press [H] or Click to throw!`
+      );
       this.pushHud();
       return;
     }
@@ -3508,6 +3571,7 @@ export class ViceCityEngine {
     } else if (WEAPON_CATALOG[id]) {
       const existing = p.weapons.find((w) => w.id === id);
       if (existing) {
+        if (!p.ownedWeapons.includes(existing.id)) p.ownedWeapons.push(existing.id);
         if (id === 'rpg') {
           p.rpgAmmo += 3;
           existing.ammo = existing.maxAmmo;
@@ -3518,12 +3582,17 @@ export class ViceCityEngine {
           this.cash -= cost;
           this.showToast(`Refilled ${existing.name} magazine!`);
         } else {
-          this.showToast(`Already carrying ${existing.name}!`);
+          p.equippedWeaponId = existing.id;
+          this.syncProtagonistWeapons(p);
+          this.showToast(`Equipped: ${existing.name}`);
+          this.pushHud();
           return;
         }
       } else {
         const w = cloneWeapon(WEAPON_CATALOG[id]);
+        // Append to persistent arsenal without overwriting earlier guns!
         p.weapons.push(w);
+        if (!p.ownedWeapons.includes(w.id)) p.ownedWeapons.push(w.id);
         if (id === 'rpg') p.rpgAmmo = Math.max(p.rpgAmmo, 3);
         p.equippedWeaponId = w.id;
         this.syncProtagonistWeapons(p);
@@ -3549,13 +3618,41 @@ export class ViceCityEngine {
   }
 
   public updateControlSettings(partial: Partial<ControlSettings>) {
-    this.controlSettings = { ...this.controlSettings, ...partial };
+    const next: ControlSettings = { ...this.controlSettings, ...partial };
+    if (partial.touchControls === true && partial.pcKeyHints === undefined) {
+      next.pcKeyHints = false;
+    } else if (partial.touchControls === false && partial.pcKeyHints === undefined) {
+      next.pcKeyHints = true;
+    }
+    this.controlSettings = next;
+    if (this.controlSettings.touchControls && document.pointerLockElement === this.renderer.domElement) {
+      document.exitPointerLock?.();
+    }
     this.pushHud();
   }
 
   public setTouchMoveInput(nx: number, nz: number) {
     this.touchMoveX = THREE.MathUtils.clamp(nx, -1, 1);
     this.touchMoveZ = THREE.MathUtils.clamp(nz, -1, 1);
+  }
+
+  public setVehicleTouchInputs(inputs: {
+    gas?: number;
+    brake?: number;
+    steer?: number;
+    handbrake?: boolean;
+    nitro?: boolean;
+  }) {
+    if (inputs.gas !== undefined) this.touchGas = THREE.MathUtils.clamp(inputs.gas, 0, 1);
+    if (inputs.brake !== undefined) this.touchBrake = THREE.MathUtils.clamp(inputs.brake, 0, 1);
+    if (inputs.steer !== undefined) this.touchSteer = THREE.MathUtils.clamp(inputs.steer, -1, 1);
+    if (inputs.handbrake !== undefined) this.touchHandbrake = inputs.handbrake;
+    if (inputs.nitro !== undefined) this.touchNitro = inputs.nitro;
+  }
+
+  public triggerHorn() {
+    if (!this.drivingVehicle) return;
+    viceAudio.playHorn();
   }
 
   public addCameraLookDelta(dyaw: number, dpitch: number) {
@@ -3565,6 +3662,10 @@ export class ViceCityEngine {
 
   public triggerPrimaryAttackPublic() {
     this.triggerPrimaryAttack();
+  }
+
+  public triggerReloadPublic() {
+    this.reloadWeapon();
   }
 
   public setSprintingTouch(active: boolean) {
@@ -3581,8 +3682,17 @@ export class ViceCityEngine {
     p.actionState = 'jump';
   }
 
-  public triggerSecondaryAim(active: boolean) {
+  public setAiming(active: boolean) {
     this.aiming = active;
+    this.pushHud();
+  }
+
+  public toggleAim() {
+    this.setAiming(!this.aiming);
+  }
+
+  public triggerSecondaryAim(active: boolean) {
+    this.setAiming(active);
   }
 
   public triggerVehicleInteractPublic() {
@@ -3635,6 +3745,7 @@ export class ViceCityEngine {
       if (!p.weapons.some((x) => x.id === w.id)) {
         p.weapons.push(w);
       }
+      if (!p.ownedWeapons.includes(w.id)) p.ownedWeapons.push(w.id);
       p.equippedWeaponId = w.id;
       this.syncProtagonistWeapons(p);
       this.cash -= cost;
@@ -5285,19 +5396,41 @@ export class ViceCityEngine {
     const isPlane = s.tier === 'plane';
     const isBike = s.tier === 'bike';
 
-    const accelInput = (this.keys['KeyW'] ? 1 : 0) - (this.keys['KeyS'] ? 1 : 0) - this.touchMoveZ;
-    const steerInput = (this.keys['KeyA'] ? 1 : 0) - (this.keys['KeyD'] ? 1 : 0) - this.touchMoveX;
-    const handbrake = Boolean(this.keys['Space']);
-    const effectiveMaxSpeed = s.tireFlat ? s.maxSpeed * 0.55 : s.maxSpeed;
+    const accelInput =
+      (this.keys['KeyW'] ? 1 : 0) -
+      (this.keys['KeyS'] ? 1 : 0) +
+      this.touchGas -
+      this.touchBrake -
+      this.touchMoveZ;
+    const steerInput =
+      (this.keys['KeyA'] ? 1 : 0) -
+      (this.keys['KeyD'] ? 1 : 0) -
+      this.touchSteer -
+      this.touchMoveX;
+    const handbrake = Boolean(this.keys['Space']) || this.touchHandbrake;
+    if (s.nitroCharge === undefined) s.nitroCharge = 100;
+    const wantNitro = !isHeli && !isPlane && (Boolean(this.keys['ShiftLeft']) || this.touchNitro);
+    const nitroBoost = wantNitro && s.nitroCharge > 2 && Math.abs(accelInput) > 0.05;
+    s.nitroActive = nitroBoost;
+    if (nitroBoost) {
+      s.nitroCharge = Math.max(0, s.nitroCharge - dt * 28);
+    } else {
+      s.nitroCharge = Math.min(100, s.nitroCharge + dt * 11);
+    }
+    const baseMax = s.tireFlat ? s.maxSpeed * 0.55 : s.maxSpeed;
+    const effectiveMaxSpeed = nitroBoost ? baseMax * 1.42 : baseMax;
 
     if (s.fuel <= 0 || (isBoat && s.anchorDropped)) {
       s.speed = THREE.MathUtils.damp(s.speed, 0, s.anchorDropped ? 4.5 : 2.5, dt);
+    } else if (handbrake && !isHeli && !isPlane) {
+      s.speed = THREE.MathUtils.damp(s.speed, 0, 6.2, dt);
     } else if (Math.abs(accelInput) > 0.05) {
-      const accel = isPlane ? 22 : s.tier === 'luxury' || isBike ? 30 : 21;
+      const baseAccel = isPlane ? 22 : s.tier === 'luxury' || isBike ? 30 : 21;
+      const accel = nitroBoost ? baseAccel * 1.75 : baseAccel;
       s.speed = THREE.MathUtils.clamp(s.speed + accelInput * accel * dt, -14, effectiveMaxSpeed);
       s.fuel = Math.max(0, s.fuel - Math.abs(accelInput) * dt * (s.fuelType === 'ev' ? 0.4 : 0.55));
     } else {
-      s.speed = THREE.MathUtils.damp(s.speed, 0, handbrake && !isHeli && !isPlane ? 5.0 : 1.8, dt);
+      s.speed = THREE.MathUtils.damp(s.speed, 0, 1.8, dt);
     }
 
     // Helicopter & Airplane Vertical Flight Physics!
@@ -6423,25 +6556,44 @@ export class ViceCityEngine {
     const p = this.protagonists[this.activeId];
     const partnerId: ProtagonistId = this.activeId === 'jason' ? 'lucia' : 'jason';
     const partner = this.protagonists[partnerId];
+    const hideHints = this.controlSettings.touchControls || !this.controlSettings.pcKeyHints;
+    const kE = hideHints ? '' : '[E] ';
     this.contextPrompt = null;
     this.contextAction = null;
     this.contextActionLabel = null;
+    this.contextKind = null;
+    this.nearbyVehicle = null;
+    this.nearbyTrunkVehicle = null;
+
+    if (!this.drivingVehicle && !p.isSitting) {
+      let bestDist = 5.2;
+      for (const v of this.vehicles) {
+        const d = Math.hypot(v.x - p.x, v.z - p.z);
+        if (d < bestDist) {
+          bestDist = d;
+          this.nearbyVehicle = v;
+          this.nearbyTrunkVehicle = v;
+        }
+      }
+    }
 
     if (p.isSitting && this.currentSeat) {
+      this.contextKind = 'seat';
       if (this.currentSeat.venue === 'coffee') {
-        this.contextPrompt = `[E] Order Cuban Espresso ($12) · [Space] Stand Up`;
+        this.contextPrompt = `${kE}Order Cuban Espresso ($12)`;
         return;
       }
       if (this.currentSeat.venue === 'bar') {
-        this.contextPrompt = `[E] Order Vice Craft Beer ($18) · [Space] Stand Up`;
+        this.contextPrompt = `${kE}Order Vice Craft Beer ($18)`;
         return;
       }
-      this.contextPrompt = `Sitting on ${this.currentSeat.label} · [Space / W] Stand Up`;
+      this.contextPrompt = `Sitting on ${this.currentSeat.label}`;
       return;
     }
 
     if (!this.drivingVehicle && !this.relationship.partnerInVehicleId && Math.hypot(p.x - partner.x, p.z - partner.z) < 2.8) {
-      this.contextPrompt = `[E] Talk to ${partner.name} · [K] Invite into Car`;
+      this.contextKind = 'npc';
+      this.contextPrompt = hideHints ? `Talk to ${partner.name}` : `[E] Talk to ${partner.name} · [K] Invite into Car`;
       this.contextActionLabel = `Talk to ${partner.name}`;
       this.contextAction = () => this.openModal('partner', { partnerName: partner.name });
       return;
@@ -6450,7 +6602,7 @@ export class ViceCityEngine {
     if (!this.drivingVehicle) {
       for (const seat of SEAT_SPOTS) {
         if (Math.hypot(p.x - seat.x, p.z - seat.z) < 2.0) {
-          this.contextPrompt = `[E] Sit on ${seat.label}`;
+          this.contextPrompt = `${kE}Sit on ${seat.label}`;
           this.contextActionLabel = 'Sit Down';
           this.contextAction = () => this.sitDownAt(seat);
           return;
@@ -6464,7 +6616,7 @@ export class ViceCityEngine {
       if (info.kind === 'safehouse') {
         // Bed at (217.2, 203.8)
         if (Math.hypot(p.x - 217.2, p.z - 203.8) < 3.0) {
-          this.contextPrompt = `[E] Sleep in King Bed (Advance to Morning & Full HP)`;
+          this.contextPrompt = `${kE}Sleep in King Bed (Advance to Morning & Full HP)`;
           this.contextActionLabel = 'Sleep';
           this.contextAction = () => this.sleepAtVillaBed();
           return;
@@ -6473,34 +6625,34 @@ export class ViceCityEngine {
         if (Math.hypot(p.x - 220.5, p.z - 215.2) < 3.0) {
           const gymAct = this.activities.find((a) => a.id === 'act_boxing');
           if (gymAct) {
-            this.contextPrompt = `[E] Work Out at Villa Private Home Gym`;
+            this.contextPrompt = `${kE}Work Out at Villa Private Home Gym`;
             this.contextActionLabel = 'Home Gym';
             this.contextAction = () => this.openModal('minigame', { activity: gymAct });
             return;
           }
         }
-        this.contextPrompt = `[E] Open Villa Wardrobe & Haircut`;
+        this.contextPrompt = `${kE}Open Villa Wardrobe & Haircut`;
         this.contextActionLabel = 'Wardrobe';
         this.contextAction = () => this.openModal('wardrobe', { interior: info });
         return;
       }
 
       if (info.kind === 'clothes') {
-        this.contextPrompt = `[E] Browse ${info.name} (Outfits & Disguise)`;
+        this.contextPrompt = `${kE}Browse ${info.name} (Outfits & Disguise)`;
         this.contextActionLabel = 'Clothes Store';
         this.contextAction = () => this.openModal('clothes', { interior: info });
         return;
       }
 
       if (info.kind === 'bungalow') {
-        this.contextPrompt = `[E] Tropical Bungalow Estate (${info.name})`;
+        this.contextPrompt = `${kE}Tropical Bungalow Estate (${info.name})`;
         this.contextActionLabel = 'Bungalow';
         this.contextAction = () => this.openModal('bungalow', { interior: info });
         return;
       }
 
       if (info.kind === 'burgershot') {
-        this.contextPrompt = `[E] Burger Shot Career Counter (Work Shifts, Grill, Mop, Scooter Delivery or Chaos!)`;
+        this.contextPrompt = `${kE}Burger Shot Career Counter (Work Shifts, Grill, Mop, Scooter Delivery or Chaos!)`;
         this.contextActionLabel = 'Burger Shot Counter';
         this.contextAction = () => this.openModal('burgerjob', { interior: info });
         return;
@@ -6510,7 +6662,7 @@ export class ViceCityEngine {
         const atmX = info.x + info.width * 0.36;
         const atmZ = info.z + info.depth * 0.18;
         if (Math.hypot(p.x - atmX, p.z - atmZ) < 3.6 || !info.hasRegister || info.robbedCooldown > 0) {
-          this.contextPrompt = `[E] Leonida Reserve Bank & Vault ATM (Deposit / Withdraw / Buy Businesses)`;
+          this.contextPrompt = `${kE}Leonida Reserve Bank & Vault ATM (Deposit / Withdraw / Buy Businesses)`;
           this.contextActionLabel = 'Bank ATM';
           this.contextAction = () => this.openModal('bank', { interior: info });
           return;
@@ -6518,7 +6670,7 @@ export class ViceCityEngine {
       }
 
       if (info.kind === 'gunshop') {
-        this.contextPrompt = `[E] Vice Armory Gun Shop (Buy Guns, Attachments, Trauma Kits & Upgrades)`;
+        this.contextPrompt = `${kE}Vice Armory Gun Shop (Buy Guns, Attachments, Trauma Kits & Upgrades)`;
         this.contextActionLabel = 'Gun Shop';
         this.contextAction = () => this.openModal('gunshop', { interior: info });
         return;
@@ -6528,20 +6680,20 @@ export class ViceCityEngine {
         const termX = info.x + info.width * 0.32;
         const termZ = info.z - info.depth * 0.35;
         if (Math.hypot(p.x - termX, p.z - termZ) < 2.8) {
-          this.contextPrompt = `[E] Wipe CCTV Security Footage (${info.name})`;
+          this.contextPrompt = `${kE}Wipe CCTV Security Footage (${info.name})`;
           this.contextActionLabel = 'Wipe CCTV';
           this.contextAction = () => this.openModal('cctv', { interior: info });
           return;
         }
       }
       if (info.kind === 'barber') {
-        this.contextPrompt = `[E] Open Barber & Shave / Disguise`;
+        this.contextPrompt = `${kE}Open Barber & Shave / Disguise`;
         this.contextActionLabel = 'Barber';
         this.contextAction = () => this.openModal('wardrobe', { interior: info });
         return;
       }
       if (info.kind === 'pawn') {
-        this.contextPrompt = `[E] Trade with Uncle Jack Fence (Key Cloner / Guns)`;
+        this.contextPrompt = `${kE}Trade with Uncle Jack Fence (Key Cloner / Guns)`;
         this.contextActionLabel = 'Fence Shop';
         this.contextAction = () => this.openModal('wardrobe', { interior: info, isFenceShop: true });
         return;
@@ -6549,14 +6701,14 @@ export class ViceCityEngine {
       if (info.activityId) {
         const act = this.activities.find((a) => a.id === info.activityId);
         if (act) {
-          this.contextPrompt = `[E] Start ${act.name}`;
+          this.contextPrompt = `${kE}Start ${act.name}`;
           this.contextActionLabel = act.name;
           this.contextAction = () => this.openModal('minigame', { activity: act });
           return;
         }
       }
       if (info.hasRegister && info.robbedCooldown <= 0) {
-        this.contextPrompt = `[E] Rob Cash Register / Intimidate Clerk`;
+        this.contextPrompt = `${kE}Rob Cash Register / Intimidate Clerk`;
         this.contextActionLabel = 'Rob Store';
         this.contextAction = () => this.openModal('robbery', { interior: info });
         return;
@@ -6567,7 +6719,7 @@ export class ViceCityEngine {
     if (!this.drivingVehicle) {
       for (const isl of SAFEHOUSE_ISLANDS) {
         if (Math.hypot(p.x - isl.bungalowX, p.z - isl.bungalowZ) < 12) {
-          this.contextPrompt = `[E] ${isl.name} Bungalow Estate (Buy / Rest / Full Health)`;
+          this.contextPrompt = `${kE}${isl.name} Bungalow Estate (Buy / Rest / Full Health)`;
           this.contextActionLabel = `${isl.name} Bungalow`;
           this.contextAction = () => this.openModal('bungalow', { island: isl });
           return;
@@ -6579,7 +6731,7 @@ export class ViceCityEngine {
     if (!this.drivingVehicle) {
       for (const job of CITY_JOBS) {
         if (Math.hypot(p.x - job.x, p.z - job.z) < 4.5) {
-          this.contextPrompt = `[E] Start Job: ${job.name} (+$${job.pay})`;
+          this.contextPrompt = `${kE}Start Job: ${job.name} (+$${job.pay})`;
           this.contextActionLabel = job.name;
           this.contextAction = () => this.openModal('job', { job });
           return;
@@ -6589,7 +6741,7 @@ export class ViceCityEngine {
 
     for (const gs of GAS_STATIONS) {
       if (Math.hypot(p.x - gs.x, p.z - gs.z) < 7.0 && this.drivingVehicle) {
-        this.contextPrompt = `[E] Refuel / EV Charge & Repair at ${gs.name} ($80)`;
+        this.contextPrompt = `${kE}Refuel / EV Charge & Repair at ${gs.name} ($80)`;
         this.contextActionLabel = 'Refuel & Repair';
         this.contextAction = () => {
           if (!this.drivingVehicle) return;
@@ -6610,7 +6762,7 @@ export class ViceCityEngine {
     if (this.drivingVehicle && this.drivingVehicle.state.gpsTrackerActive) {
       for (const fn of FENCE_SPOTS) {
         if (Math.hypot(p.x - fn.x, p.z - fn.z) < 8.0) {
-          this.contextPrompt = `[E] Strip GPS Tracker & Respray Car at ${fn.name}`;
+          this.contextPrompt = `${kE}Strip GPS Tracker & Respray Car at ${fn.name}`;
           this.contextActionLabel = 'Strip GPS';
           this.contextAction = () => {
             if (!this.drivingVehicle) return;
@@ -6626,19 +6778,20 @@ export class ViceCityEngine {
       }
     }
 
-    this.nearbyTrunkVehicle = null;
+    if (!this.drivingVehicle && this.nearbyVehicle) {
+      const v = this.nearbyVehicle;
+      this.contextPrompt = hideHints
+        ? `${v.state.hotwired ? 'Enter' : v.state.needsKeyCloner ? 'Clone Key' : 'Hotwire'} ${v.state.name}`
+        : `[F] ${v.state.hotwired ? 'Drive / Pilot' : v.state.needsKeyCloner ? 'Clone Key & Steal' : 'Hotwire'} ${v.state.name} · [K] Partner In/Out · [T] Trunk · [Y] Hood Repair ($120)`;
+      return;
+    }
+
     if (!this.drivingVehicle) {
-      for (const v of this.vehicles) {
-        if (Math.hypot(v.x - p.x, v.z - p.z) < 5.2) {
-          this.nearbyTrunkVehicle = v;
-          this.contextPrompt = `[F] ${v.state.hotwired ? 'Drive / Pilot' : v.state.needsKeyCloner ? 'Clone Key & Steal' : 'Hotwire'} ${v.state.name} · [K] Partner In/Out · [T] Trunk · [Y] Hood Repair ($120)`;
-          return;
-        }
-      }
 
       for (const act of this.activities) {
         if (Math.hypot(act.x - p.x, act.z - p.z) < 5.5) {
-          this.contextPrompt = `[E] Play ${act.name} (${act.category})`;
+          this.contextKind = 'activity';
+          this.contextPrompt = `${hideHints ? '' : '[E] '}Play ${act.name} (${act.category})`;
           this.contextActionLabel = act.name;
           this.contextAction = () => this.openModal('minigame', { activity: act });
           return;
@@ -6648,7 +6801,8 @@ export class ViceCityEngine {
       for (const npc of this.npcs) {
         if (!npc.alive || npc.kind === 'police' || npc.kind === 'swat' || npc.kind === 'child' || npc.drivingCar) continue;
         if (Math.hypot(npc.x - p.x, npc.z - p.z) < 3.0) {
-          this.contextPrompt = `[E] Interact with ${npc.name} (${npc.isWitness ? 'WITNESS!' : npc.archetype})`;
+          this.contextKind = 'npc';
+          this.contextPrompt = `${hideHints ? '' : '[E] '}Interact with ${npc.name} (${npc.isWitness ? 'WITNESS!' : npc.archetype})`;
           this.contextActionLabel = 'Talk to NPC';
           this.contextAction = () => {
             const ctx: NpcInteractionContext = {
@@ -6671,7 +6825,9 @@ export class ViceCityEngine {
         }
       }
     } else {
-      this.contextPrompt = `[F] Exit · [K] ${this.relationship.partnerInVehicleId ? 'Let Partner Out' : 'Invite Partner Into Car'}`;
+      this.contextPrompt = hideHints
+        ? null
+        : `[F] Exit · [K] ${this.relationship.partnerInVehicleId ? 'Let Partner Out' : 'Invite Partner Into Car'}`;
     }
   }
 
@@ -6720,15 +6876,16 @@ export class ViceCityEngine {
 
     const targetFov = this.aiming
       ? p.equippedWeaponId === 'sniper'
-        ? 24
-        : 44
+        ? 18
+        : 42
       : this.slowMoActive
       ? 48
       : isDriving && this.drivingVehicle
-      ? 62 + (Math.abs(this.drivingVehicle.state.speed) / this.drivingVehicle.state.maxSpeed) * 14
-      : 62;
-    if (Math.abs(this.camera.fov - targetFov) > 0.1) {
-      this.camera.fov = THREE.MathUtils.damp(this.camera.fov, targetFov, 8, dt);
+      ? (this.drivingVehicle.state.nitroActive ? 78 : 65) +
+        (Math.abs(this.drivingVehicle.state.speed) / this.drivingVehicle.state.maxSpeed) * 12
+      : 65;
+    if (Math.abs(this.camera.fov - targetFov) > 0.08) {
+      this.camera.fov = THREE.MathUtils.damp(this.camera.fov, targetFov, 10, dt);
       this.camera.updateProjectionMatrix();
     }
 
@@ -6837,6 +6994,7 @@ export class ViceCityEngine {
       profile: { ...this.profile },
       wanted: { ...this.wanted },
       drivingVehicle: this.drivingVehicle ? { ...this.drivingVehicle.state } : null,
+      nearbyVehicle: this.nearbyVehicle ? { ...this.nearbyVehicle.state } : null,
       nearbyTrunkVehicle: this.nearbyTrunkVehicle ? { ...this.nearbyTrunkVehicle.state } : null,
       currentDistrict: getDistrictAt(p.x, p.z),
       currentInterior: this.currentInterior ? { ...this.currentInterior } : null,
@@ -6850,6 +7008,7 @@ export class ViceCityEngine {
       aiming: this.aiming,
       contextPrompt: this.contextPrompt,
       contextAction: this.contextActionLabel,
+      contextKind: this.contextKind,
       waypoint: this.waypoint ? { ...this.waypoint } : null,
       gpsRoute,
       activeMission: this.missions.find((m) => m.id === this.activeMissionId) ?? null,
