@@ -1,0 +1,6 @@
+{
+  "name": "Vice Bound: Leonida",
+  "description": "Open-world 3D action-adventure set in Vice City and Leonida featuring dual protagonists Jason & Lucia, seamless enterable interiors, 6-star police AI, realistic carry limits, vehicle mechanics, social media events, and 30+ activities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
