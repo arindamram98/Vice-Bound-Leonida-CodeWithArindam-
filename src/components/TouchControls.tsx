@@ -144,7 +144,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-25 pointer-events-none select-none">
+    <div className="fixed inset-0 z-25 h-[100dvh] max-h-[100dvh] overflow-hidden pointer-events-none select-none">
       {/* Right-side Touch Look Zone (open center-right area for smooth 3D camera orbit) */}
       <div
         className="absolute top-28 right-0 bottom-36 w-[52%] pointer-events-auto touch-none"

@@ -98,8 +98,8 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3 pointer-events-auto">
-      <div className="h-[82dvh] max-h-[82dvh] aspect-[9/18] max-w-[92vw] min-w-[270px] bg-[#0b0d15] border-[3px] border-neutral-700/90 rounded-[30px] flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-2.5 sm:p-3 pointer-events-auto">
+      <div className="w-[min(360px,94vw)] max-w-[94vw] h-[min(640px,88dvh)] max-h-[88dvh] bg-[#0b0d15] border-[3px] border-neutral-700/90 rounded-[26px] sm:rounded-[30px] flex flex-col overflow-hidden shadow-2xl">
         {/* GTA Phone Top Speaker Notch & Status */}
         <div className="px-4 pt-2.5 pb-2 bg-[#121624] border-b border-white/10 shrink-0">
           <div className="w-14 h-1 rounded-full bg-neutral-700 mx-auto mb-2" />

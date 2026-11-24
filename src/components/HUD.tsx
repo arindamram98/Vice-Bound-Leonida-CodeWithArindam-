@@ -68,7 +68,7 @@ export const HUD: React.FC<HUDProps> = ({
   const lang = hud.controlSettings.language;
   const touchMode = hud.controlSettings.touchControls;
   const showHints = hud.controlSettings.pcKeyHints && !touchMode;
-  const miniSize = touchMode ? 118 : 156;
+  const miniSize = touchMode ? 104 : 152;
 
   const activeWeapon =
     player.equippedWeaponId === 'fists' ||
@@ -432,7 +432,7 @@ export const HUD: React.FC<HUDProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between"
+      className="fixed inset-0 z-20 h-[100dvh] max-h-[100dvh] overflow-hidden pointer-events-none flex flex-col justify-between"
       style={{
         paddingTop: 'max(10px, env(safe-area-inset-top))',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
@@ -700,14 +700,14 @@ export const HUD: React.FC<HUDProps> = ({
           )}
 
           {hud.contextPrompt && (
-            <div className="bg-[#11131d]/95 border border-amber-400/50 text-amber-200 text-xs font-medium px-4 py-1.5 rounded-lg whitespace-nowrap">
+            <div className="bg-[#11131d]/95 border border-amber-400/50 text-amber-200 text-xs font-medium px-3 sm:px-4 py-1.5 rounded-lg max-w-[88vw] text-center whitespace-normal sm:whitespace-nowrap">
               {hud.contextPrompt}
             </div>
           )}
 
           {!touchMode && (
             <>
-              <div className="bg-[#0d0f17]/90 border border-white/15 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+              <div className="bg-[#0d0f17]/90 border border-white/15 rounded-lg px-2 py-1.5 flex flex-wrap justify-center items-center gap-1.5 max-w-[94vw]">
                 <button
                   type="button"
                   onClick={onOpenPhone}

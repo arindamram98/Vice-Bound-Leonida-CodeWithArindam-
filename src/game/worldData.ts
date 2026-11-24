@@ -62,6 +62,45 @@ export interface RoadSegmentDef {
   island: 'south' | 'north' | 'airport';
 }
 
+export interface AirportDef {
+  id: string;
+  name: string;
+  district: string;
+  cx: number;
+  cz: number;
+  hx: number;
+  hz: number;
+  fenceMinX: number;
+  fenceMaxX: number;
+  fenceMinZ: number;
+  fenceMaxZ: number;
+  gateX: number;
+  gateZ: number;
+  gateWidth: number;
+  runwayX: number;
+  runwayZ: number;
+  runwayLen: number;
+  runwayW: number;
+  helipadX: number;
+  helipadZ: number;
+  towerX: number;
+  towerZ: number;
+  terminalX: number;
+  terminalZ: number;
+  ticketX: number;
+  ticketZ: number;
+  destinationId: string;
+  destinationName: string;
+}
+
+export interface AirportFenceWall {
+  id: string;
+  cx: number;
+  cz: number;
+  hx: number;
+  hz: number;
+}
+
 export interface GasStationSpot {
   id: string;
   name: string;
@@ -129,118 +168,237 @@ export interface SafehouseIslandDef {
   accentColor: number;
 }
 
-// ─── Road Grid & Multi-City Geography ──────────────────────────────────────────
-export const ROAD_X = [-280, -140, 0, 140, 280];
-export const SOUTH_ROAD_Z = [140, 280, 420];
-export const NORTH_ROAD_Z = [-420, -280, -140];
+// ─── 5x Scale Road Grid & Multi-City Geography ───────────────────────────────
+export const ROAD_X = [-1400, -700, 0, 700, 1400];
+export const SOUTH_ROAD_Z = [700, 1400, 2100];
+export const NORTH_ROAD_Z = [-2450, -2100, -1400, -700];
 export const ROAD_Z = [...NORTH_ROAD_Z, ...SOUTH_ROAD_Z];
 export const HIGHWAY_X = [0];
-export const HIGHWAY_Z = [-140, 140];
+export const HIGHWAY_Z = [-1400, 1400];
 
 export const SOUTH_ISLAND = {
   name: 'Vice Downtown',
-  cx: 5,
-  cz: 305,
-  hx: 355,
-  hz: 230,
+  cx: 25,
+  cz: 1525,
+  hx: 1775,
+  hz: 1150,
 };
 
 export const NORTH_ISLAND = {
   name: 'Northport',
-  cx: -5,
-  cz: -307.5,
-  hx: 345,
-  hz: 232.5,
+  cx: -25,
+  cz: -1537.5,
+  hx: 1725,
+  hz: 1162.5,
 };
+
+// Two Complete Fenced International Airports (South Vice + Northport)
+export const AIRPORT_ZONES: AirportDef[] = [
+  {
+    id: 'air_south',
+    name: 'South Vice International Airport',
+    district: 'South Vice Airport',
+    cx: -2175,
+    cz: 1550,
+    hx: 425,
+    hz: 420,
+    fenceMinX: -2560,
+    fenceMaxX: -1750,
+    fenceMinZ: 1170,
+    fenceMaxZ: 1930,
+    gateX: -1750,
+    gateZ: 1400,
+    gateWidth: 40,
+    runwayX: -2220,
+    runwayZ: 1720,
+    runwayLen: 520,
+    runwayW: 44,
+    helipadX: -1920,
+    helipadZ: 1490,
+    towerX: -1980,
+    towerZ: 1600,
+    terminalX: -1870,
+    terminalZ: 1340,
+    ticketX: -1850,
+    ticketZ: 1365,
+    destinationId: 'air_north',
+    destinationName: 'Northport International Airport',
+  },
+  {
+    id: 'air_north',
+    name: 'Northport International Airport',
+    district: 'Northport Airport',
+    cx: -2175,
+    cz: -1550,
+    hx: 425,
+    hz: 420,
+    fenceMinX: -2560,
+    fenceMaxX: -1750,
+    fenceMinZ: -1930,
+    fenceMaxZ: -1170,
+    gateX: -1750,
+    gateZ: -1400,
+    gateWidth: 40,
+    runwayX: -2220,
+    runwayZ: -1720,
+    runwayLen: 520,
+    runwayW: 44,
+    helipadX: -1920,
+    helipadZ: -1490,
+    towerX: -1980,
+    towerZ: -1600,
+    terminalX: -1870,
+    terminalZ: -1340,
+    ticketX: -1850,
+    ticketZ: -1365,
+    destinationId: 'air_south',
+    destinationName: 'South Vice International Airport',
+  },
+];
+
+export const AIRPORT_ZONE = AIRPORT_ZONES[1];
+
+// Solid Jali perimeter fence segments (4 sides per airport, east wall split around main gate)
+export const AIRPORT_FENCE_WALLS: AirportFenceWall[] = AIRPORT_ZONES.flatMap((az) => {
+  const halfGate = az.gateWidth / 2;
+  const wallT = 0.7;
+  const cxW = (az.fenceMinX + az.fenceMaxX) / 2;
+  const hxW = (az.fenceMaxX - az.fenceMinX) / 2;
+  const northLen = Math.max(4, az.gateZ - halfGate - az.fenceMinZ);
+  const southLen = Math.max(4, az.fenceMaxZ - (az.gateZ + halfGate));
+  return [
+    { id: `${az.id}_w_north`, cx: cxW, cz: az.fenceMinZ, hx: hxW, hz: wallT },
+    { id: `${az.id}_w_south`, cx: cxW, cz: az.fenceMaxZ, hx: hxW, hz: wallT },
+    {
+      id: `${az.id}_w_west`,
+      cx: az.fenceMinX,
+      cz: (az.fenceMinZ + az.fenceMaxZ) / 2,
+      hx: wallT,
+      hz: (az.fenceMaxZ - az.fenceMinZ) / 2,
+    },
+    {
+      id: `${az.id}_w_east_top`,
+      cx: az.gateX,
+      cz: az.fenceMinZ + northLen / 2,
+      hx: wallT,
+      hz: northLen / 2,
+    },
+    {
+      id: `${az.id}_w_east_bot`,
+      cx: az.gateX,
+      cz: az.gateZ + halfGate + southLen / 2,
+      hx: wallT,
+      hz: southLen / 2,
+    },
+  ];
+});
 
 export const SAFEHOUSE_ISLANDS: SafehouseIslandDef[] = [
   {
     id: 'isl_paradise',
     name: 'Paradise Key',
-    cx: 560,
-    cz: 240,
-    halfSize: 72,
-    cornerRadius: 32,
-    bungalowX: 560,
-    bungalowZ: 230,
-    poolX: 560,
-    poolZ: 256,
+    cx: 2650,
+    cz: 1100,
+    halfSize: 220,
+    cornerRadius: 90,
+    bungalowX: 2650,
+    bungalowZ: 1060,
+    poolX: 2650,
+    poolZ: 1140,
     accentColor: 0x0ea5e9,
   },
   {
     id: 'isl_starlight',
     name: 'Starlight Atoll',
-    cx: 560,
-    cz: -240,
-    halfSize: 72,
-    cornerRadius: 32,
-    bungalowX: 560,
-    bungalowZ: -230,
-    poolX: 560,
-    poolZ: -256,
+    cx: 2650,
+    cz: -1100,
+    halfSize: 220,
+    cornerRadius: 90,
+    bungalowX: 2650,
+    bungalowZ: -1060,
+    poolX: 2650,
+    poolZ: -1140,
     accentColor: 0xf43f5e,
   },
 ];
+
+export const TAXI_STAND = {
+  id: 'taxi_stand_main',
+  name: 'Vice Downtown Taxi Stand',
+  x: 110,
+  z: 1225,
+};
 
 export const ROAD_SEGMENTS: RoadSegmentDef[] = [
   // Vice Downtown (South Island) North-South Streets
   ...ROAD_X.map((rx) => ({
     id: `s_ns_${rx}`,
     x1: rx,
-    z1: rx === 0 ? 92 : 84,
+    z1: rx === 0 ? 460 : 420,
     x2: rx,
-    z2: 520,
-    width: rx === 0 ? 18 : 13.5,
+    z2: 2620,
+    width: rx === 0 ? 28 : 20,
     isHighway: rx === 0,
     island: 'south' as const,
   })),
-  // Vice Downtown East-West Streets
+  // Vice Downtown East-West Streets (z=1400 connects west through South Airport Security Gate)
   ...SOUTH_ROAD_Z.map((rz) => ({
     id: `s_ew_${rz}`,
-    x1: -336,
+    x1: rz === 1400 ? -1880 : -1680,
     z1: rz,
-    x2: 344,
+    x2: 1700,
     z2: rz,
-    width: rz === 140 ? 17 : 13.5,
-    isHighway: rz === 140,
+    width: rz === 1400 ? 26 : 20,
+    isHighway: rz === 1400,
     island: 'south' as const,
   })),
-  // Northport (North Island) North-South Streets
+  // South Airport Terminal Access Road inside gate
+  {
+    id: 'air_south_ns',
+    x1: -1870,
+    z1: 1365,
+    x2: -1870,
+    z2: 1680,
+    width: 20,
+    isHighway: false,
+    island: 'airport' as const,
+  },
+  // Northport & Paleto Suburbs North-South Streets
   ...ROAD_X.map((rx) => ({
     id: `n_ns_${rx}`,
     x1: rx,
-    z1: -524,
+    z1: -2620,
     x2: rx,
-    z2: rx === 0 ? -92 : -84,
-    width: rx === 0 ? 18 : 13.5,
+    z2: rx === 0 ? -460 : -420,
+    width: rx === 0 ? 28 : 20,
     isHighway: rx === 0,
     island: 'north' as const,
   })),
-  // Northport East-West Streets (with z=-280 extending into Leonida Airport)
+  // Northport East-West Streets (z=-1400 connects west through North Airport Security Gate)
   ...NORTH_ROAD_Z.map((rz) => ({
     id: `n_ew_${rz}`,
-    x1: rz === -280 ? -525 : -336,
+    x1: rz === -1400 ? -1880 : -1680,
     z1: rz,
-    x2: 326,
+    x2: 1640,
     z2: rz,
-    width: rz === -140 ? 17 : 13.5,
-    isHighway: rz === -140,
+    width: rz === -1400 ? 26 : 20,
+    isHighway: rz === -1400,
     island: 'north' as const,
   })),
-  // Airport Terminal Access Road
+  // North Airport Terminal Access Road inside gate
   {
-    id: 'air_ns',
-    x1: -410,
-    z1: -410,
-    x2: -410,
-    z2: -280,
-    width: 13,
+    id: 'air_north_ns',
+    x1: -1870,
+    z1: -1680,
+    x2: -1870,
+    z2: -1365,
+    width: 20,
     isHighway: false,
     island: 'airport' as const,
   },
 ];
 
-// Grand Over-Water Main Highway Bridge connecting Vice Downtown & Northport across the Ocean Channel
+// Grand Over-Water Main Highway Bridge connecting Vice Downtown & Northport across the wide 5x Ocean Channel
 export const BRIDGES: BridgeDef[] = [
   {
     id: 'br_grand_highway',
@@ -248,18 +406,18 @@ export const BRIDGES: BridgeDef[] = [
     axis: 'z',
     cx: 0,
     cz: 0,
-    length: 192,
-    width: 22,
-    deckHeight: 5.4,
+    length: 960,
+    width: 32,
+    deckHeight: 11.5,
   },
 ];
 
-// Boat Docks over Water
+// Boat Docks over Water (5x coordinates matching coastlines & islands)
 export const WOODEN_DOCKS: DockDef[] = [
-  { id: 'dock_marina', name: 'Port Vice Marina Dock', xMin: 356, xMax: 392, zMin: 342, zMax: 358, deckY: 0.65 },
-  { id: 'dock_northport', name: 'Northport Harbor Dock', xMin: 62, xMax: 78, zMin: -92, zMax: -56, deckY: 0.65 },
-  { id: 'dock_paradise', name: 'Paradise Key Island Dock', xMin: 468, xMax: 498, zMin: 233, zMax: 247, deckY: 0.65 },
-  { id: 'dock_starlight', name: 'Starlight Atoll Dock', xMin: 468, xMax: 498, zMin: -247, zMax: -233, deckY: 0.65 },
+  { id: 'dock_marina', name: 'Port Vice Marina Dock', xMin: 1785, xMax: 1855, zMin: 1735, zMax: 1765, deckY: 0.7 },
+  { id: 'dock_northport', name: 'Northport Harbor Dock', xMin: 310, xMax: 345, zMin: -430, zMax: -360, deckY: 0.7 },
+  { id: 'dock_paradise', name: 'Paradise Key Island Dock', xMin: 2380, xMax: 2450, zMin: 1085, zMax: 1115, deckY: 0.7 },
+  { id: 'dock_starlight', name: 'Starlight Atoll Dock', xMin: 2380, xMax: 2450, zMin: -1115, zMax: -1085, deckY: 0.7 },
 ];
 
 export function isOnWoodenDock(x: number, z: number): DockDef | null {
@@ -276,31 +434,30 @@ export function getBridgeDeckInfo(
   for (const br of BRIDGES) {
     const halfL = br.length / 2;
     const halfW = br.width / 2;
+    const flatSpan = br.length > 400 ? 260 : 52;
     if (br.axis === 'x') {
       const dx = Math.abs(x - br.cx);
       const dz = Math.abs(z - br.cz);
       if (dx <= halfL && dz <= halfW) {
-        const flatSpan = 52;
         let h = br.deckHeight;
         if (dx > flatSpan) {
           const t = 1 - (dx - flatSpan) / (halfL - flatSpan);
           const smooth = t * t * (3 - 2 * t);
           h = ROAD_Y + (br.deckHeight - ROAD_Y) * smooth;
         }
-        return { onBridge: true, height: h, bridge: br, nearGuardrail: dz > halfW - 1.1 };
+        return { onBridge: true, height: h, bridge: br, nearGuardrail: dz > halfW - 1.3 };
       }
     } else {
       const dx = Math.abs(x - br.cx);
       const dz = Math.abs(z - br.cz);
       if (dz <= halfL && dx <= halfW) {
-        const flatSpan = 52;
         let h = br.deckHeight;
         if (dz > flatSpan) {
           const t = 1 - (dz - flatSpan) / (halfL - flatSpan);
           const smooth = t * t * (3 - 2 * t);
           h = ROAD_Y + (br.deckHeight - ROAD_Y) * smooth;
         }
-        return { onBridge: true, height: h, bridge: br, nearGuardrail: dx > halfW - 1.1 };
+        return { onBridge: true, height: h, bridge: br, nearGuardrail: dx > halfW - 1.3 };
       }
     }
   }
@@ -327,7 +484,7 @@ export function getTerrainHeightAt(x: number, z: number): number {
   return LAND_Y;
 }
 
-// ─── A* Road-Node GPS Pathfinder (Connects Vice Downtown, Northport & Bridge) ───
+// ─── A* Road-Node GPS Pathfinder (5x Map: South, North, Paleto, Bridge & Both Airports) ──
 interface NavNode {
   id: string;
   x: number;
@@ -362,7 +519,7 @@ function buildRoadNavGraph(): NavNode[] {
     }
   }
 
-  // North Island grid nodes
+  // North Island + Paleto Suburbs grid nodes
   for (let xi = 0; xi < ROAD_X.length; xi++) {
     for (let zi = 0; zi < NORTH_ROAD_Z.length; zi++) {
       const n = addNode(`n_${xi}_${zi}`, ROAD_X[xi], NORTH_ROAD_Z[zi]);
@@ -371,27 +528,40 @@ function buildRoadNavGraph(): NavNode[] {
     }
   }
 
-  // Grand Over-Water Highway Bridge link along x = 0 (index 2 in ROAD_X)
-  const sBridgePortal = addNode('br_s', 0, 96);
-  const nBridgePortal = addNode('br_n', 0, -96);
-  const sCenter = byKey.get('s_2_0')!; // (0, 140)
-  const nCenter = byKey.get('n_2_2')!; // (0, -140)
+  // Grand Over-Water Highway Bridge link along x = 0
+  const sBridgePortal = addNode('br_s', 0, 480);
+  const nBridgePortal = addNode('br_n', 0, -480);
+  const sCenter = byKey.get('s_2_0')!; // (0, 700)
+  const nCenter = byKey.get('n_2_3')!; // (0, -700)
   link(sCenter, sBridgePortal);
   link(sBridgePortal, nBridgePortal);
   link(nBridgePortal, nCenter);
 
-  // Airport access link from Northport (-280, -280) -> (-410, -280) -> (-410, -365)
-  const northAirGate = byKey.get('n_0_1')!; // (-280, -280)
-  const airCorner = addNode('air_corner', -410, -280);
-  const airTerm = addNode('air_term', -410, -365);
-  link(northAirGate, airCorner);
-  link(airCorner, airTerm);
+  // South Airport security gate & terminal link
+  const southWestRoad = byKey.get('s_0_1')!; // (-1400, 1400)
+  const southAirGate = addNode('air_s_gate', -1750, 1400);
+  const southAirCorner = addNode('air_s_corner', -1870, 1400);
+  const southAirTerm = addNode('air_s_term', -1870, 1620);
+  link(southWestRoad, southAirGate);
+  link(southAirGate, southAirCorner);
+  link(southAirCorner, southAirTerm);
 
-  // Marina dock node on South Island
-  const southMarinaRoad = byKey.get('s_4_1')!; // (280, 280)
-  const marinaGate = addNode('marina_gate', 340, 280);
-  const marinaDock = addNode('marina_dock', 340, 350);
-  link(southMarinaRoad, marinaGate);
+  // North Airport security gate & terminal link
+  const northWestRoad = byKey.get('n_0_2')!; // (-1400, -1400)
+  const northAirGate = addNode('air_n_gate', -1750, -1400);
+  const northAirCorner = addNode('air_n_corner', -1870, -1400);
+  const northAirTerm = addNode('air_n_term', -1870, -1620);
+  link(northWestRoad, northAirGate);
+  link(northAirGate, northAirCorner);
+  link(northAirCorner, northAirTerm);
+
+  // Marina dock node on South Island east coast
+  const southEastRoad = byKey.get('s_4_1')!; // (1400, 1400)
+  const marinaRoad = addNode('marina_road', 1680, 1400);
+  const marinaGate = addNode('marina_gate', 1680, 1750);
+  const marinaDock = addNode('marina_dock', 1785, 1750);
+  link(southEastRoad, marinaRoad);
+  link(marinaRoad, marinaGate);
   link(marinaGate, marinaDock);
 
   return nodes;
@@ -414,19 +584,18 @@ function findNearestNavNode(x: number, z: number): NavNode {
 }
 
 /**
- * Computes a bright-blue GTA GPS polyline along real streets & the Grand Over-Water Highway Bridge using A*.
+ * Computes a bright-blue GTA GPS polyline along real streets, airports & the Grand Over-Water Highway Bridge using A*.
  */
 export function computeGpsRoute(x1: number, z1: number, x2: number, z2: number): Array<{ x: number; z: number }> {
-  if (Math.hypot(x2 - x1, z2 - z1) < 28) {
+  if (Math.hypot(x2 - x1, z2 - z1) < 90) {
     return [
       { x: x1, z: z1 },
       { x: x2, z: z2 },
     ];
   }
 
-  // If destination is on Paradise Key or Starlight Atoll, route to Port Vice Marina Dock first then across bay
-  const destOnIsland = SAFEHOUSE_ISLANDS.some((isl) => Math.hypot(x2 - isl.cx, z2 - isl.cz) < 95);
-  const srcOnIsland = SAFEHOUSE_ISLANDS.some((isl) => Math.hypot(x1 - isl.cx, z1 - isl.cz) < 95);
+  const destOnIsland = SAFEHOUSE_ISLANDS.some((isl) => Math.hypot(x2 - isl.cx, z2 - isl.cz) < 250);
+  const srcOnIsland = SAFEHOUSE_ISLANDS.some((isl) => Math.hypot(x1 - isl.cx, z1 - isl.cz) < 250);
   if (destOnIsland && srcOnIsland) {
     return [
       { x: x1, z: z1 },
@@ -448,7 +617,9 @@ export function computeGpsRoute(x1: number, z1: number, x2: number, z2: number):
   const open = new Set<string>([startNode.id]);
   const cameFrom = new Map<string, string>();
   const gScore = new Map<string, number>([[startNode.id, 0]]);
-  const fScore = new Map<string, number>([[startNode.id, Math.hypot(goalNode.x - startNode.x, goalNode.z - startNode.z)]]);
+  const fScore = new Map<string, number>([
+    [startNode.id, Math.hypot(goalNode.x - startNode.x, goalNode.z - startNode.z)],
+  ]);
 
   while (open.size > 0) {
     let curId = '';
@@ -460,8 +631,7 @@ export function computeGpsRoute(x1: number, z1: number, x2: number, z2: number):
         curId = id;
       }
     }
-    if (!curId) break;
-    if (curId === goalNode.id) break;
+    if (!curId || curId === goalNode.id) break;
 
     open.delete(curId);
     const cur = NAV_BY_ID.get(curId)!;
@@ -490,55 +660,44 @@ export function computeGpsRoute(x1: number, z1: number, x2: number, z2: number):
   const pts: Array<{ x: number; z: number }> = [{ x: x1, z: z1 }];
   for (const n of nodePath) {
     const last = pts[pts.length - 1];
-    if (Math.hypot(n.x - last.x, n.z - last.z) > 6) {
+    if (Math.hypot(n.x - last.x, n.z - last.z) > 12) {
       pts.push({ x: n.x, z: n.z });
     }
   }
   const endLast = pts[pts.length - 1];
-  if (Math.hypot(x2 - endLast.x, z2 - endLast.z) > 4) {
+  if (Math.hypot(x2 - endLast.x, z2 - endLast.z) > 8) {
     pts.push({ x: x2, z: z2 });
   }
   return pts;
 }
 
-export const AIRPORT_ZONE = {
-  cx: -440,
-  cz: -385,
-  runwayX: -455,
-  runwayZ: -458,
-  runwayLen: 185,
-  runwayW: 24,
-  helipadX: -362,
-  helipadZ: -380,
-};
-
 export const CENTRAL_PARK = {
-  cx: 70,
-  cz: 350,
-  w: 64,
-  d: 64,
-  fountainX: 70,
-  fountainZ: 342,
-  playgroundX: 70,
-  playgroundZ: 362,
+  cx: 350,
+  cz: 1750,
+  w: 160,
+  d: 160,
+  fountainX: 350,
+  fountainZ: 1715,
+  playgroundX: 350,
+  playgroundZ: 1785,
 };
 
-// Relative to Burger Shot Diner at (70, 210)
+// Relative to Burger Shot Diner at (350, 1050)
 export const BURGER_SHOT_STATIONS = {
-  grill: { x: 67.5, z: 204.8, label: 'Flat-Top Grill' },
-  assembly: { x: 71.5, z: 206.0, label: 'Burger Assembly Table' },
-  counter: { x: 68.8, z: 208.8, label: 'Customer Pickup Counter' },
+  grill: { x: 347.5, z: 1044.8, label: 'Flat-Top Grill' },
+  assembly: { x: 351.5, z: 1046.0, label: 'Burger Assembly Table' },
+  counter: { x: 348.8, z: 1048.8, label: 'Customer Pickup Counter' },
 };
 
 export const HERO_INTERIORS: InteriorInfo[] = [
-  // ─── SOUTH ISLAND: VICE DOWNTOWN ──────────────────────────────────────────────
+  // ─── SOUTH ISLAND: VICE DOWNTOWN (5x Anchors, Human-Scale Interiors) ────────
   {
     id: 'int_jason_house',
     name: "Jason's Villa (Ocean View)",
     district: 'Vice Downtown',
     kind: 'safehouse',
-    x: 210,
-    z: 210,
+    x: 1050,
+    z: 1050,
     width: 26,
     depth: 20,
     hasRegister: false,
@@ -553,8 +712,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Burger Shot Diner (Leonida Flagship)',
     district: 'Vice Downtown',
     kind: 'burgershot',
-    x: 70,
-    z: 210,
+    x: 350,
+    z: 1050,
     width: 18,
     depth: 15,
     hasRegister: true,
@@ -568,8 +727,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice PD Central Precinct',
     district: 'Vice Downtown',
     kind: 'precinct',
-    x: -70,
-    z: 210,
+    x: -350,
+    z: 1050,
     width: 24,
     depth: 18,
     hasRegister: false,
@@ -583,8 +742,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Armory Gun Shop',
     district: 'Vice Downtown',
     kind: 'gunshop',
-    x: 70,
-    z: 105,
+    x: 350,
+    z: 525,
     width: 18,
     depth: 14,
     hasRegister: true,
@@ -598,8 +757,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Threads Clothing & Style',
     district: 'Vice Downtown',
     kind: 'clothes',
-    x: -70,
-    z: 105,
+    x: -350,
+    z: 525,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -614,8 +773,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Roast Coffee Shop',
     district: 'Vice Downtown',
     kind: 'coffee',
-    x: 210,
-    z: 105,
+    x: 1050,
+    z: 525,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -629,8 +788,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Neon Anchor Beer Bar',
     district: 'Vice Downtown',
     kind: 'bar',
-    x: -210,
-    z: 210,
+    x: -1050,
+    z: 1050,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -645,8 +804,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Leonida Reserve Bank',
     district: 'Vice Downtown',
     kind: 'bank',
-    x: 210,
-    z: 350,
+    x: 1050,
+    z: 1750,
     width: 22,
     depth: 18,
     hasRegister: true,
@@ -660,8 +819,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vangelico Vice Jewelry',
     district: 'Vice Downtown',
     kind: 'jewelry',
-    x: -70,
-    z: 350,
+    x: -350,
+    z: 1750,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -675,8 +834,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Galleria Mega-Mall',
     district: 'Vice Downtown',
     kind: 'mall',
-    x: -210,
-    z: 350,
+    x: -1050,
+    z: 1750,
     width: 26,
     depth: 20,
     hasRegister: true,
@@ -691,8 +850,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Iron Gym',
     district: 'Vice Downtown',
     kind: 'gym',
-    x: 210,
-    z: 480,
+    x: 1050,
+    z: 2400,
     width: 18,
     depth: 15,
     hasRegister: true,
@@ -707,8 +866,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: '24/7 Ocean Mart',
     district: 'Ocean Drive',
     kind: 'mart',
-    x: 320,
-    z: 105,
+    x: 1580,
+    z: 525,
     width: 14,
     depth: 14,
     hasRegister: true,
@@ -722,8 +881,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Club Malibu Neon',
     district: 'Ocean Drive',
     kind: 'club',
-    x: 320,
-    z: 210,
+    x: 1580,
+    z: 1050,
     width: 18,
     depth: 16,
     hasRegister: true,
@@ -738,8 +897,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Port Vice Marina Boathouse',
     district: 'Vice Marina',
     kind: 'boathouse',
-    x: 320,
-    z: 350,
+    x: 1620,
+    z: 1750,
     width: 18,
     depth: 14,
     hasRegister: false,
@@ -749,15 +908,30 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     hasATM: false,
     activityId: 'act_scuba',
   },
+  {
+    id: 'int_airport_south',
+    name: 'South Vice International Terminal',
+    district: 'South Vice Airport',
+    kind: 'airport',
+    x: -1870,
+    z: 1340,
+    width: 30,
+    depth: 18,
+    hasRegister: false,
+    robbedCooldown: 0,
+    hasCCTV: true,
+    cctvWiped: false,
+    hasATM: true,
+  },
 
-  // ─── NORTH ISLAND: NORTHPORT & AIRPORT ────────────────────────────────────────
+  // ─── NORTH ISLAND: NORTHPORT, PALETO SUBURBS & NORTH AIRPORT ─────────────────
   {
     id: 'int_gunshop_north',
     name: 'Northport Armory Gun Shop',
     district: 'Northport',
     kind: 'gunshop',
-    x: -70,
-    z: -210,
+    x: -350,
+    z: -1050,
     width: 18,
     depth: 15,
     hasRegister: true,
@@ -771,8 +945,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Northport Threads Boutique',
     district: 'Northport',
     kind: 'clothes',
-    x: 210,
-    z: -210,
+    x: 1050,
+    z: -1050,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -787,8 +961,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Vice Exotic Motors & Mod Shop',
     district: 'Northport',
     kind: 'dealership',
-    x: 70,
-    z: -210,
+    x: 350,
+    z: -1050,
     width: 24,
     depth: 18,
     hasRegister: false,
@@ -802,8 +976,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Uncle Jack Pawn & Gear',
     district: 'Northport',
     kind: 'pawn',
-    x: -210,
-    z: -210,
+    x: -1050,
+    z: -1050,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -817,8 +991,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Cuts & Threads Barber & Styling',
     district: 'Northport',
     kind: 'barber',
-    x: -70,
-    z: -105,
+    x: -350,
+    z: -525,
     width: 14,
     depth: 13,
     hasRegister: true,
@@ -833,8 +1007,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Northport Harbor Marketplace',
     district: 'Northport',
     kind: 'market',
-    x: 70,
-    z: -105,
+    x: 350,
+    z: -525,
     width: 18,
     depth: 15,
     hasRegister: true,
@@ -848,8 +1022,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Havana Cuban Cafe & Diner',
     district: 'Northport',
     kind: 'diner',
-    x: -210,
-    z: -350,
+    x: -1050,
+    z: -1750,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -863,8 +1037,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Jack of Hearts Bar',
     district: 'Northport',
     kind: 'bar',
-    x: 210,
-    z: -350,
+    x: 1050,
+    z: -1750,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -876,11 +1050,11 @@ export const HERO_INTERIORS: InteriorInfo[] = [
   },
   {
     id: 'int_forest_cabin',
-    name: 'Everglades Ranger & Bait Outpost',
-    district: 'Northport Woods',
+    name: 'Paleto Ranger & Bait Outpost',
+    district: 'Paleto Suburbs',
     kind: 'storefront',
-    x: 70,
-    z: -480,
+    x: 350,
+    z: -2320,
     width: 16,
     depth: 14,
     hasRegister: true,
@@ -890,13 +1064,13 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     hasATM: false,
   },
   {
-    id: 'int_airport',
-    name: 'Leonida International Terminal',
-    district: 'Leonida Airport',
+    id: 'int_airport_north',
+    name: 'Northport International Terminal',
+    district: 'Northport Airport',
     kind: 'airport',
-    x: -410,
-    z: -335,
-    width: 28,
+    x: -1870,
+    z: -1340,
+    width: 30,
     depth: 18,
     hasRegister: false,
     robbedCooldown: 0,
@@ -911,8 +1085,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Paradise Key Luxury Bungalow',
     district: 'Paradise Key',
     kind: 'bungalow',
-    x: 560,
-    z: 230,
+    x: 2650,
+    z: 1060,
     width: 18,
     depth: 14,
     hasRegister: false,
@@ -926,8 +1100,8 @@ export const HERO_INTERIORS: InteriorInfo[] = [
     name: 'Starlight Atoll Luxury Estate',
     district: 'Starlight Atoll',
     kind: 'bungalow',
-    x: 560,
-    z: -230,
+    x: 2650,
+    z: -1060,
     width: 18,
     depth: 14,
     hasRegister: false,
@@ -939,49 +1113,50 @@ export const HERO_INTERIORS: InteriorInfo[] = [
 ];
 
 export const SEAT_SPOTS: SeatSpot[] = [
-  { id: 'seat_home_sofa1', x: 202.2, y: LAND_Y + 0.46, z: 207.5, yaw: 0, label: 'Villa L-Sofa (Left)', venue: 'home' },
-  { id: 'seat_home_sofa2', x: 204.0, y: LAND_Y + 0.46, z: 207.5, yaw: 0, label: 'Villa L-Sofa (Right)', venue: 'home' },
-  { id: 'seat_home_patio', x: 199.5, y: LAND_Y + 0.46, z: 223.5, yaw: Math.PI, label: 'Villa Garden Patio', venue: 'home' },
-  { id: 'seat_coffee_1', x: 207.5, y: LAND_Y + 0.46, z: 107.0, yaw: Math.PI / 2, label: 'Coffee Booth Seat A', venue: 'coffee' },
-  { id: 'seat_coffee_2', x: 210.5, y: LAND_Y + 0.46, z: 107.0, yaw: -Math.PI / 2, label: 'Coffee Booth Seat B', venue: 'coffee' },
-  { id: 'seat_bar_stool1', x: -212.0, y: LAND_Y + 0.62, z: 208.4, yaw: Math.PI, label: 'Beer Bar Stool 1', venue: 'bar' },
-  { id: 'seat_bar_stool2', x: -210.0, y: LAND_Y + 0.62, z: 208.4, yaw: Math.PI, label: 'Beer Bar Stool 2', venue: 'bar' },
-  { id: 'seat_bar_booth', x: -205.5, y: LAND_Y + 0.46, z: 212.5, yaw: -Math.PI / 2, label: 'VIP Lounge Booth', venue: 'bar' },
-  { id: 'seat_bar2_stool', x: 208.5, y: LAND_Y + 0.62, z: -351.8, yaw: Math.PI, label: 'Jack of Hearts Stool', venue: 'bar' },
-  { id: 'seat_burger_booth1', x: 64.8, y: LAND_Y + 0.46, z: 212.5, yaw: 0, label: 'Burger Shot Booth 1', venue: 'burger' },
-  { id: 'seat_burger_booth2', x: 64.8, y: LAND_Y + 0.46, z: 215.2, yaw: Math.PI, label: 'Burger Shot Booth 2', venue: 'burger' },
-  { id: 'seat_park_1', x: 60.5, y: LAND_Y + 0.46, z: 342.0, yaw: Math.PI / 2, label: 'Garden Bench (West)', venue: 'park' },
-  { id: 'seat_park_2', x: 79.5, y: LAND_Y + 0.46, z: 342.0, yaw: -Math.PI / 2, label: 'Garden Bench (East)', venue: 'park' },
-  { id: 'seat_park_3', x: 70.0, y: LAND_Y + 0.46, z: 333.5, yaw: 0, label: 'Garden Bench (North)', venue: 'park' },
-  { id: 'seat_park_4', x: 62.0, y: LAND_Y + 0.46, z: 356.0, yaw: 0, label: 'Playground Parent Bench', venue: 'park' },
+  { id: 'seat_home_sofa1', x: 1042.2, y: LAND_Y + 0.46, z: 1047.5, yaw: 0, label: 'Villa L-Sofa (Left)', venue: 'home' },
+  { id: 'seat_home_sofa2', x: 1044.0, y: LAND_Y + 0.46, z: 1047.5, yaw: 0, label: 'Villa L-Sofa (Right)', venue: 'home' },
+  { id: 'seat_home_patio', x: 1039.5, y: LAND_Y + 0.46, z: 1063.5, yaw: Math.PI, label: 'Villa Garden Patio', venue: 'home' },
+  { id: 'seat_coffee_1', x: 1047.5, y: LAND_Y + 0.46, z: 527.0, yaw: Math.PI / 2, label: 'Coffee Booth Seat A', venue: 'coffee' },
+  { id: 'seat_coffee_2', x: 1050.5, y: LAND_Y + 0.46, z: 527.0, yaw: -Math.PI / 2, label: 'Coffee Booth Seat B', venue: 'coffee' },
+  { id: 'seat_bar_stool1', x: -1052.0, y: LAND_Y + 0.62, z: 1048.4, yaw: Math.PI, label: 'Beer Bar Stool 1', venue: 'bar' },
+  { id: 'seat_bar_stool2', x: -1050.0, y: LAND_Y + 0.62, z: 1048.4, yaw: Math.PI, label: 'Beer Bar Stool 2', venue: 'bar' },
+  { id: 'seat_bar_booth', x: -1045.5, y: LAND_Y + 0.46, z: 1052.5, yaw: -Math.PI / 2, label: 'VIP Lounge Booth', venue: 'bar' },
+  { id: 'seat_bar2_stool', x: 1048.5, y: LAND_Y + 0.62, z: -1751.8, yaw: Math.PI, label: 'Jack of Hearts Stool', venue: 'bar' },
+  { id: 'seat_burger_booth1', x: 344.8, y: LAND_Y + 0.46, z: 1052.5, yaw: 0, label: 'Burger Shot Booth 1', venue: 'burger' },
+  { id: 'seat_burger_booth2', x: 344.8, y: LAND_Y + 0.46, z: 1055.2, yaw: Math.PI, label: 'Burger Shot Booth 2', venue: 'burger' },
+  { id: 'seat_park_1', x: 340.5, y: LAND_Y + 0.46, z: 1715.0, yaw: Math.PI / 2, label: 'Garden Bench (West)', venue: 'park' },
+  { id: 'seat_park_2', x: 359.5, y: LAND_Y + 0.46, z: 1715.0, yaw: -Math.PI / 2, label: 'Garden Bench (East)', venue: 'park' },
+  { id: 'seat_park_3', x: 350.0, y: LAND_Y + 0.46, z: 1706.5, yaw: 0, label: 'Garden Bench (North)', venue: 'park' },
+  { id: 'seat_park_4', x: 342.0, y: LAND_Y + 0.46, z: 1776.0, yaw: 0, label: 'Playground Parent Bench', venue: 'park' },
 ];
 
 export const STREET_STALLS: StreetStallSpot[] = [
-  { id: 'stall_burger_beach', name: 'Burger Shot Coastal Stall', kind: 'burger', x: 320, z: 160, yaw: 0 },
-  { id: 'stall_fruit_park', name: 'Central Park Mango & Smoothie Stall', kind: 'fruit', x: 46, z: 328, yaw: Math.PI / 4 },
-  { id: 'stall_burger_north', name: 'Northport Open Market Grill', kind: 'burger', x: 35, z: -172, yaw: 0 },
-  { id: 'stall_merch_north', name: 'Northport Vinyl & Gear Stall', kind: 'merch', x: -175, z: -172, yaw: Math.PI },
+  { id: 'stall_burger_beach', name: 'Burger Shot Coastal Stall', kind: 'burger', x: 1580, z: 820, yaw: 0 },
+  { id: 'stall_fruit_park', name: 'Central Park Mango & Smoothie Stall', kind: 'fruit', x: 300, z: 1690, yaw: Math.PI / 4 },
+  { id: 'stall_burger_north', name: 'Northport Open Market Grill', kind: 'burger', x: 190, z: -860, yaw: 0 },
+  { id: 'stall_merch_north', name: 'Northport Vinyl & Gear Stall', kind: 'merch', x: -860, z: -860, yaw: Math.PI },
 ];
 
 export const GAS_STATIONS: GasStationSpot[] = [
-  { id: 'gas_1', name: 'Ron Petrol & EV Hub (Vice Downtown)', x: 175, z: 168, isEV: true },
-  { id: 'gas_2', name: 'Downtown Charge & Fuel', x: -32, z: 168, isEV: true },
-  { id: 'gas_3', name: 'Northport Highway Fuel & EV', x: -32, z: -168, isEV: true },
-  { id: 'gas_4', name: 'Airport AvGas & EV Depot', x: -355, z: -310, isEV: true },
+  { id: 'gas_1', name: 'Ron Petrol & EV Hub (Vice Downtown)', x: 860, z: 860, isEV: true },
+  { id: 'gas_2', name: 'Downtown Charge & Fuel', x: -180, z: 860, isEV: true },
+  { id: 'gas_3', name: 'Northport Highway Fuel & EV', x: -180, z: -860, isEV: true },
+  { id: 'gas_4', name: 'South Airport AvGas Depot', x: -1795, z: 1325, isEV: true },
+  { id: 'gas_5', name: 'North Airport AvGas Depot', x: -1795, z: -1325, isEV: true },
 ];
 
 export const FENCE_SPOTS: FenceSpot[] = [
-  { id: 'fence_1', name: 'Northport Chop Shop & GPS Wipe', x: -245, z: -178 },
-  { id: 'fence_2', name: 'Port Vice Dock Fence', x: 255, z: 388 },
+  { id: 'fence_1', name: 'Northport Chop Shop & GPS Wipe', x: -1220, z: -880 },
+  { id: 'fence_2', name: 'Port Vice Dock Fence', x: 1280, z: 1860 },
 ];
 
 export const DELIVERY_TARGETS = [
-  { customerName: 'Marco (Ocean View Villa)', x: 225, z: 230 },
-  { customerName: 'Sofia (Central Park Fountain)', x: 70, z: 334 },
-  { customerName: 'Rico (Neon Anchor Bar)', x: -210, z: 195 },
-  { customerName: 'Camila (Vice Galleria Entrance)', x: -210, z: 330 },
-  { customerName: 'Darius (Northport Dealership)', x: 70, z: -190 },
-  { customerName: 'Elena (Everglades Outpost)', x: 70, z: -464 },
+  { customerName: 'Marco (Ocean View Villa)', x: 1068, z: 1070 },
+  { customerName: 'Sofia (Central Park Fountain)', x: 350, z: 1705 },
+  { customerName: 'Rico (Neon Anchor Bar)', x: -1050, z: 1032 },
+  { customerName: 'Camila (Vice Galleria Entrance)', x: -1050, z: 1728 },
+  { customerName: 'Darius (Northport Dealership)', x: 350, z: -1030 },
+  { customerName: 'Elena (Paleto Suburbs Outpost)', x: 350, z: -2300 },
 ];
 
 export const INITIAL_STOCKS: StockAsset[] = [
@@ -993,10 +1168,10 @@ export const INITIAL_STOCKS: StockAsset[] = [
 ];
 
 export const INITIAL_BUSINESSES: BusinessProperty[] = [
-  { id: 'biz_carwash', name: 'Vice Shine Car Wash', kind: 'carwash', district: 'Northport', x: -175, z: -105, cost: 4500, owned: false, dailyIncome: 450 },
-  { id: 'biz_nightclub', name: 'Club Malibu Neon (Front)', kind: 'nightclub', district: 'Ocean Drive', x: 320, z: 210, cost: 12000, owned: false, dailyIncome: 1100 },
-  { id: 'biz_bungalow_paradise', name: 'Paradise Key Luxury Bungalow', kind: 'bungalow', district: 'Paradise Key', x: 560, z: 230, cost: 18500, owned: false, dailyIncome: 1650 },
-  { id: 'biz_bungalow_starlight', name: 'Starlight Atoll Luxury Estate', kind: 'bungalow', district: 'Starlight Atoll', x: 560, z: -230, cost: 28000, owned: false, dailyIncome: 2500 },
+  { id: 'biz_carwash', name: 'Vice Shine Car Wash', kind: 'carwash', district: 'Northport', x: -860, z: -525, cost: 4500, owned: false, dailyIncome: 450 },
+  { id: 'biz_nightclub', name: 'Club Malibu Neon (Front)', kind: 'nightclub', district: 'Ocean Drive', x: 1580, z: 1050, cost: 12000, owned: false, dailyIncome: 1100 },
+  { id: 'biz_bungalow_paradise', name: 'Paradise Key Luxury Bungalow', kind: 'bungalow', district: 'Paradise Key', x: 2650, z: 1060, cost: 18500, owned: false, dailyIncome: 1650 },
+  { id: 'biz_bungalow_starlight', name: 'Starlight Atoll Luxury Estate', kind: 'bungalow', district: 'Starlight Atoll', x: 2650, z: -1060, cost: 28000, owned: false, dailyIncome: 2500 },
 ];
 
 export const CITY_JOBS: JobDef[] = [
@@ -1005,8 +1180,8 @@ export const CITY_JOBS: JobDef[] = [
     name: 'Burger Shot Diner (Physical Shift & Delivery)',
     role: 'Kitchen Crew & Scooter Rider',
     district: 'Vice Downtown',
-    x: 70,
-    z: 210,
+    x: 350,
+    z: 1050,
     pay: 30,
     description: 'Walk inside Burger Shot Diner to cook patties, assemble & serve ($15–$35) or deliver ($40–$80).',
   },
@@ -1015,8 +1190,8 @@ export const CITY_JOBS: JobDef[] = [
     name: 'Burger Shot Coastal Stall',
     role: 'Grill Cook & Cashier',
     district: 'Ocean Drive',
-    x: 320,
-    z: 160,
+    x: 1580,
+    z: 820,
     pay: 28,
     description: 'Flip Vice Burgers & serve beach customers at Burger Shot Stall.',
   },
@@ -1025,8 +1200,8 @@ export const CITY_JOBS: JobDef[] = [
     name: 'Northport Market Grill',
     role: 'Street Vendor',
     district: 'Northport',
-    x: 35,
-    z: -172,
+    x: 190,
+    z: -860,
     pay: 32,
     description: 'Cook rush-hour street orders across the Grand Highway Bridge.',
   },
@@ -1035,77 +1210,81 @@ export const CITY_JOBS: JobDef[] = [
     name: 'Vice Cab Fare Run',
     role: 'City Driver',
     district: 'Vice Downtown',
-    x: 22,
-    z: 245,
+    x: TAXI_STAND.x,
+    z: TAXI_STAND.z,
     pay: 55,
-    description: 'Pick up VIP fares across Vice Downtown & Northport.',
+    description: 'Pick up VIP fares from the Taxi Stand across Vice Downtown & Northport.',
   },
   {
     id: 'job_airport_cargo',
-    name: 'Leonida Air Freight Run',
+    name: 'South Vice Air Freight Run',
     role: 'Ramp & Pilot Crew',
-    district: 'Leonida Airport',
-    x: -410,
-    z: -335,
+    district: 'South Vice Airport',
+    x: -1870,
+    z: 1340,
     pay: 85,
-    description: 'Load cargo & prep charter aircraft at Leonida International.',
+    description: 'Load cargo & prep charter flights between South Vice & Northport Airports.',
   },
 ];
 
 /**
- * Strict road-corridor, water-shoreline, park, runway, and landmark bounding-box collision check.
- * Guarantees NO procedural building, bungalow, or tree ever overlaps asphalt or water.
+ * Strict road-corridor, water-shoreline, park, fenced-airport, and landmark bounding-box collision check.
+ * Guarantees NO procedural building, bungalow, or tree ever overlaps asphalt, airport fences/runways, or water.
  */
 export function isTooCloseToRoadOrWater(bx: number, bz: number, halfW: number, halfD: number): boolean {
-  // Check against every explicit road segment corridor
   for (const seg of ROAD_SEGMENTS) {
-    const segMinX = Math.min(seg.x1, seg.x2) - seg.width / 2 - 4.5;
-    const segMaxX = Math.max(seg.x1, seg.x2) + seg.width / 2 + 4.5;
-    const segMinZ = Math.min(seg.z1, seg.z2) - seg.width / 2 - 4.5;
-    const segMaxZ = Math.max(seg.z1, seg.z2) + seg.width / 2 + 4.5;
+    const segMinX = Math.min(seg.x1, seg.x2) - seg.width / 2 - 7;
+    const segMaxX = Math.max(seg.x1, seg.x2) + seg.width / 2 + 7;
+    const segMinZ = Math.min(seg.z1, seg.z2) - seg.width / 2 - 7;
+    const segMaxZ = Math.max(seg.z1, seg.z2) + seg.width / 2 + 7;
     if (bx + halfW > segMinX && bx - halfW < segMaxX && bz + halfD > segMinZ && bz - halfD < segMaxZ) {
       return true;
     }
   }
 
-  // Check against Grand Bridge approaches
   for (const br of BRIDGES) {
-    const bw = br.axis === 'z' ? br.width / 2 + 5 : br.length / 2 + 5;
-    const bd = br.axis === 'z' ? br.length / 2 + 5 : br.width / 2 + 5;
+    const bw = br.axis === 'z' ? br.width / 2 + 8 : br.length / 2 + 8;
+    const bd = br.axis === 'z' ? br.length / 2 + 8 : br.width / 2 + 8;
     if (Math.abs(bx - br.cx) < halfW + bw && Math.abs(bz - br.cz) < halfD + bd) {
       return true;
     }
   }
 
-  // Airport Runway & Helipad safety clearance
-  if (
-    Math.abs(bx - AIRPORT_ZONE.runwayX) < AIRPORT_ZONE.runwayLen / 2 + halfW + 12 &&
-    Math.abs(bz - AIRPORT_ZONE.runwayZ) < AIRPORT_ZONE.runwayW / 2 + halfD + 16
-  ) {
-    return true;
-  }
-  if (Math.hypot(bx - AIRPORT_ZONE.helipadX, bz - AIRPORT_ZONE.helipadZ) < 26 + Math.max(halfW, halfD)) {
-    return true;
+  // Entire fenced interior of BOTH airports is reserved for tarmac, runways, helipads, towers & terminals
+  for (const az of AIRPORT_ZONES) {
+    if (
+      bx + halfW > az.fenceMinX - 8 &&
+      bx - halfW < az.fenceMaxX + 8 &&
+      bz + halfD > az.fenceMinZ - 8 &&
+      bz - halfD < az.fenceMaxZ + 8
+    ) {
+      return true;
+    }
   }
 
   // Central Park boundary clearance
   if (
-    Math.abs(bx - CENTRAL_PARK.cx) < CENTRAL_PARK.w / 2 + halfW + 4 &&
-    Math.abs(bz - CENTRAL_PARK.cz) < CENTRAL_PARK.d / 2 + halfD + 4
+    Math.abs(bx - CENTRAL_PARK.cx) < CENTRAL_PARK.w / 2 + halfW + 8 &&
+    Math.abs(bz - CENTRAL_PARK.cz) < CENTRAL_PARK.d / 2 + halfD + 8
   ) {
     return true;
   }
 
-  // Ocean & Shoreline margin: all 4 footprint corners must sit safely inland (shoreDist <= -7.5)
+  // Taxi Stand clearance
+  if (Math.abs(bx - TAXI_STAND.x) < 22 + halfW && Math.abs(bz - TAXI_STAND.z) < 22 + halfD) {
+    return true;
+  }
+
+  // Ocean & Shoreline margin
   const corners: Array<[number, number]> = [
     [bx, bz],
-    [bx - halfW - 6, bz - halfD - 6],
-    [bx + halfW + 6, bz - halfD - 6],
-    [bx - halfW - 6, bz + halfD + 6],
-    [bx + halfW + 6, bz + halfD + 6],
+    [bx - halfW - 10, bz - halfD - 10],
+    [bx + halfW + 10, bz - halfD - 10],
+    [bx - halfW - 10, bz + halfD + 10],
+    [bx + halfW + 10, bz + halfD + 10],
   ];
   for (const [cx, cz] of corners) {
-    if (getWaterShoreDistance(cx, cz) > -6.5) return true;
+    if (getWaterShoreDistance(cx, cz) > -8.5) return true;
   }
 
   return false;
@@ -1137,7 +1316,7 @@ export function generateViceCityWorld(): {
       archStyle = hInt.kind === 'safehouse' || hInt.kind === 'bungalow' ? 'suburban_house' : 'art_deco';
     } else if (hInt.kind === 'market') {
       archStyle = 'market_stall';
-    } else if (hInt.district === 'Northport Woods' || hInt.kind === 'boathouse') {
+    } else if (hInt.district === 'Paleto Suburbs' || hInt.kind === 'boathouse') {
       archStyle = 'cabin_warehouse';
     }
 
@@ -1149,7 +1328,7 @@ export function generateViceCityWorld(): {
       d: hInt.depth,
       h:
         hInt.kind === 'bank' || hInt.kind === 'mall'
-          ? 20
+          ? 24
           : hInt.kind === 'safehouse' || hInt.kind === 'bungalow'
           ? 6.4
           : hInt.kind === 'dealership'
@@ -1196,76 +1375,79 @@ export function generateViceCityWorld(): {
   const storefrontKinds: InteriorKind[] = ['storefront', 'mart', 'coffee', 'bar', 'diner', 'clothes'];
 
   let idx = 0;
-  // City blocks across BOTH Vice Downtown (South) & Northport (North)
-  const blockXCenters = [-210, -70, 70, 210, 318];
-  const blockZCenters = [-480, -350, -210, -105, 105, 210, 350, 480];
+  // 5x Scale City Districts: spaced generously to keep draw calls optimal (~320 buildings across 5x area)
+  const blockXCenters = [-1050, -350, 350, 1050, 1550];
+  const blockZCenters = [-2320, -1750, -1050, -525, 525, 1050, 1750, 2380];
 
   for (const blockCx of blockXCenters) {
     for (const blockCz of blockZCenters) {
-      // Skip Central Park block
-      if (Math.abs(blockCx - CENTRAL_PARK.cx) < 35 && Math.abs(blockCz - CENTRAL_PARK.cz) < 35) continue;
+      if (Math.abs(blockCx - CENTRAL_PARK.cx) < 120 && Math.abs(blockCz - CENTRAL_PARK.cz) < 120) continue;
 
-      const isNorthWoods = blockCz < -440;
+      const isPaletoSuburbs = blockCz < -2150;
       const isNorthport = blockCz < 0;
-      const isOceanDrive = blockCx > 280 && blockCz > 0;
+      const isOceanDrive = blockCx > 1400 && blockCz > 0;
 
-      const offsets = isNorthWoods
+      const offsets = isPaletoSuburbs
         ? [
-            [-26, -18],
-            [26, 18],
+            [-140, -60],
+            [0, 50],
+            [140, -40],
           ]
         : [
-            [-36, -24],
-            [0, -24],
-            [36, -24],
-            [-36, 24],
-            [0, 24],
-            [36, 24],
+            [-210, -140],
+            [0, -140],
+            [210, -140],
+            [-210, 0],
+            [0, 0],
+            [210, 0],
+            [-210, 140],
+            [0, 140],
+            [210, 140],
           ];
 
       for (const [ox, oz] of offsets) {
         const bx = blockCx + ox;
         const bz = blockCz + oz;
-        const seed = Math.abs(Math.sin((idx + 1) * 12.9898 + bx * 0.17 + bz * 0.31) * 43758.5453) % 1;
-        if (isNorthWoods && seed > 0.45) continue;
+        const seed = Math.abs(Math.sin((idx + 1) * 12.9898 + bx * 0.041 + bz * 0.067) * 43758.5453) % 1;
+        if (isPaletoSuburbs && seed > 0.58) continue;
 
-        const w = isNorthport ? 13 + seed * 4.5 : 15 + seed * 5.0;
-        const d = isNorthport ? 12 + (1 - seed) * 4.5 : 14 + (1 - seed) * 5.0;
+        const w = isNorthport ? 28 + seed * 14 : 34 + seed * 16;
+        const d = isNorthport ? 24 + (1 - seed) * 12 : 30 + (1 - seed) * 14;
 
         if (isTooCloseToRoadOrWater(bx, bz, w / 2, d / 2)) continue;
 
         const overlapsHero = HERO_INTERIORS.some(
-          (hi) => Math.abs(hi.x - bx) < hi.width / 2 + w / 2 + 7 && Math.abs(hi.z - bz) < hi.depth / 2 + d / 2 + 7
+          (hi) => Math.abs(hi.x - bx) < hi.width / 2 + w / 2 + 16 && Math.abs(hi.z - bz) < hi.depth / 2 + d / 2 + 16
         );
-        const overlapsGas = GAS_STATIONS.some((g) => Math.abs(g.x - bx) < 16 && Math.abs(g.z - bz) < 16);
-        const overlapsFence = FENCE_SPOTS.some((f) => Math.abs(f.x - bx) < 16 && Math.abs(f.z - bz) < 16);
-        const overlapsStall = STREET_STALLS.some((st) => Math.abs(st.x - bx) < 14 && Math.abs(st.z - bz) < 14);
+        const overlapsGas = GAS_STATIONS.some((g) => Math.abs(g.x - bx) < 34 && Math.abs(g.z - bz) < 34);
+        const overlapsFence = FENCE_SPOTS.some((f) => Math.abs(f.x - bx) < 32 && Math.abs(f.z - bz) < 32);
+        const overlapsStall = STREET_STALLS.some((st) => Math.abs(st.x - bx) < 28 && Math.abs(st.z - bz) < 28);
         const overlapsExisting = buildings.some(
-          (b) => Math.abs(b.x - bx) < b.w / 2 + w / 2 + 3 && Math.abs(b.z - bz) < b.d / 2 + d / 2 + 3
+          (b) => Math.abs(b.x - bx) < b.w / 2 + w / 2 + 14 && Math.abs(b.z - bz) < b.d / 2 + d / 2 + 14
         );
         if (overlapsHero || overlapsGas || overlapsFence || overlapsStall || overlapsExisting) continue;
 
         idx++;
         const district = getDistrictAt(bx, bz);
         let archStyle: BuildingArchStyle = 'brick_shop';
-        let h = 11 + Math.floor(seed * 14);
+        let h = 14 + Math.floor(seed * 16);
         let color = brickPalette[idx % brickPalette.length];
 
-        if (isNorthWoods) {
-          archStyle = 'cabin_warehouse';
-          h = 6.2 + Math.floor(seed * 3.5);
-          color = 0x6b4423;
-        } else if (!isNorthport && !isOceanDrive && Math.abs(bx) < 250) {
-          archStyle = seed > 0.28 ? 'glass_tower' : 'art_deco';
-          h = 26 + Math.floor(seed * 44);
+        if (isPaletoSuburbs) {
+          archStyle = idx % 2 === 0 ? 'suburban_house' : 'cabin_warehouse';
+          h = 7.2 + Math.floor(seed * 3.5);
+          color = archStyle === 'suburban_house' ? suburbPalette[idx % suburbPalette.length] : 0x6b4423;
+        } else if (!isNorthport && !isOceanDrive && Math.abs(bx) < 1280) {
+          archStyle = seed > 0.25 ? 'glass_tower' : 'art_deco';
+          h = 34 + Math.floor(seed * 68);
           color = archStyle === 'glass_tower' ? towerPalette[idx % towerPalette.length] : decoPalette[idx % decoPalette.length];
         } else if (isOceanDrive) {
           archStyle = 'art_deco';
-          h = 11 + Math.floor(seed * 16);
+          h = 16 + Math.floor(seed * 24);
           color = decoPalette[idx % decoPalette.length];
         } else if (isNorthport) {
           archStyle = idx % 3 === 0 ? 'cabin_warehouse' : idx % 2 === 0 ? 'suburban_house' : 'brick_shop';
-          h = archStyle === 'suburban_house' ? 6.2 + seed * 2.4 : 9 + seed * 7;
+          h = archStyle === 'suburban_house' ? 7.5 + seed * 3.2 : 12 + seed * 12;
           color =
             archStyle === 'suburban_house'
               ? suburbPalette[idx % suburbPalette.length]
@@ -1274,7 +1456,7 @@ export function generateViceCityWorld(): {
               : brickPalette[idx % brickPalette.length];
         }
 
-        const isCoreEnterable = Math.abs(bx) < 310 && idx % 5 === 0;
+        const isCoreEnterable = Math.abs(bx) < 1450 && idx % 6 === 0;
         let interior: InteriorInfo | undefined;
         if (isCoreEnterable) {
           const kind = storefrontKinds[idx % storefrontKinds.length];
@@ -1322,11 +1504,11 @@ export function generateViceCityWorld(): {
     }
   }
 
-  // ─── Trees (Strictly checked against roads, buildings, and water!) ──────────
+  // ─── Trees (Strictly checked against roads, buildings, airports & water!) ──
   let treeId = 0;
   const tryPushTree = (x: number, z: number, species: TreeSpecies, scale = 1.0) => {
-    if (isTooCloseToRoadOrWater(x, z, 2.5, 2.5)) return;
-    if (buildings.some((b) => Math.abs(b.x - x) < b.w / 2 + 4 && Math.abs(b.z - z) < b.d / 2 + 4)) return;
+    if (isTooCloseToRoadOrWater(x, z, 3.0, 3.0)) return;
+    if (buildings.some((b) => Math.abs(b.x - x) < b.w / 2 + 5 && Math.abs(b.z - z) < b.d / 2 + 5)) return;
     weakTrees.push({
       id: `tree_${treeId++}`,
       x,
@@ -1341,29 +1523,29 @@ export function generateViceCityWorld(): {
   };
 
   // Vice Beach Coastal Palms (east edge of Vice Downtown)
-  for (let z = 100; z <= 510; z += 26) {
-    tryPushTree(342, z, 'palm', 1.05);
+  for (let z = 480; z <= 2550; z += 95) {
+    tryPushTree(1715, z, 'palm', 1.15);
   }
-  // Northport Coastal Palms & Oaks along North Shore
-  for (let x = -310; x <= 300; x += 38) {
-    tryPushTree(x, -92, 'palm', 0.95);
-    tryPushTree(x, 92, 'palm', 1.0);
+  // Ocean Channel Shore Palms
+  for (let x = -1550; x <= 1550; x += 140) {
+    tryPushTree(x, -425, 'palm', 1.05);
+    tryPushTree(x, 425, 'palm', 1.05);
   }
-  // Central Park Trees (skipping road checks since Central Park is inside block)
+  // Central Park Trees
   const parkTrees: Array<[number, number, TreeSpecies]> = [
-    [46, 326, 'oak'],
-    [94, 326, 'palm'],
-    [46, 374, 'palm'],
-    [94, 374, 'oak'],
-    [46, 350, 'oak'],
-    [94, 350, 'oak'],
+    [295, 1690, 'oak'],
+    [405, 1690, 'palm'],
+    [295, 1810, 'palm'],
+    [405, 1810, 'oak'],
+    [295, 1750, 'oak'],
+    [405, 1750, 'oak'],
   ];
   for (const [px, pz, sp] of parkTrees) {
     weakTrees.push({
       id: `tree_${treeId++}`,
       x: px,
       z: pz,
-      scale: 1.05,
+      scale: 1.1,
       species: sp,
       intact: true,
       fallAngle: 0,
@@ -1372,44 +1554,44 @@ export function generateViceCityWorld(): {
     });
   }
 
-  // Northport Woods Pines & Oaks (z in [-520 .. -445])
-  for (let fx = -310; fx <= 300; fx += 34) {
-    for (let fz = -520; fz <= -445; fz += 30) {
-      const hash = Math.abs(Math.sin(fx * 0.13 + fz * 0.29) * 1000) % 1;
-      if (hash > 0.65) continue;
-      tryPushTree(fx + (hash - 0.3) * 8, fz + (hash - 0.3) * 8, hash > 0.3 ? 'pine' : 'oak', 0.95 + hash * 0.4);
+  // Paleto Suburbs Pine & Oak Forest (z in [-2610 .. -2190])
+  for (let fx = -1550; fx <= 1550; fx += 145) {
+    for (let fz = -2600; fz <= -2200; fz += 125) {
+      const hash = Math.abs(Math.sin(fx * 0.037 + fz * 0.089) * 1000) % 1;
+      if (hash > 0.62) continue;
+      tryPushTree(fx + (hash - 0.3) * 24, fz + (hash - 0.3) * 24, hash > 0.3 ? 'pine' : 'oak', 1.0 + hash * 0.45);
     }
   }
 
-  // Boulevards Urban Oaks & Palms along major avenues
-  for (const rx of [-140, 0, 140]) {
-    for (let z = 165; z <= 490; z += 46) {
-      if (SOUTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 18)) continue;
-      tryPushTree(rx + 12.5, z, rx === 0 ? 'palm' : 'oak', 0.92);
-      tryPushTree(rx - 12.5, z, rx === 0 ? 'palm' : 'oak', 0.92);
+  // Major Boulevard Oaks & Palms
+  for (const rx of [-700, 0, 700]) {
+    for (let z = 780; z <= 2500; z += 180) {
+      if (SOUTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 40)) continue;
+      tryPushTree(rx + 20, z, rx === 0 ? 'palm' : 'oak', 1.0);
+      tryPushTree(rx - 20, z, rx === 0 ? 'palm' : 'oak', 1.0);
     }
-    for (let z = -490; z <= -165; z += 48) {
-      if (NORTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 18)) continue;
-      tryPushTree(rx + 12.5, z, 'pine', 0.94);
+    for (let z = -2380; z <= -780; z += 190) {
+      if (NORTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 40)) continue;
+      tryPushTree(rx + 20, z, 'pine', 1.02);
     }
   }
 
   // Safehouse Islands Tropical Palms around Paradise Key & Starlight Atoll
   for (const isl of SAFEHOUSE_ISLANDS) {
     const offsets: Array<[number, number]> = [
-      [-38, -32],
-      [38, -32],
-      [-42, 18],
-      [42, 18],
-      [-28, 42],
-      [28, 42],
+      [-110, -85],
+      [110, -85],
+      [-135, 35],
+      [135, 35],
+      [-75, 110],
+      [75, 110],
     ];
     for (const [ox, oz] of offsets) {
       weakTrees.push({
         id: `tree_${treeId++}`,
         x: isl.cx + ox,
         z: isl.cz + oz,
-        scale: 1.05,
+        scale: 1.15,
         species: 'palm',
         intact: true,
         fallAngle: 0,
@@ -1424,95 +1606,94 @@ export function generateViceCityWorld(): {
   let sIdx = 0;
   for (const rx of ROAD_X) {
     for (const rz of ROAD_Z) {
-      if (getWaterShoreDistance(rx + 12, rz + 12) > -2) continue;
+      if (getWaterShoreDistance(rx + 18, rz + 18) > -3) continue;
       roadSigns.push({
-        x: rx + 11.2,
-        z: rz + 11.2,
+        x: rx + 16,
+        z: rz + 16,
         yaw: sIdx % 2 === 0 ? 0 : Math.PI / 2,
         color: signColors[sIdx++ % signColors.length],
       });
 
-      // Add Traffic Light Rigs at major 4-way intersections
-      if (rx >= -140 && rx <= 140 && (rz === 140 || rz === 280 || rz === -140 || rz === -280)) {
-        trafficLights.push({ x: rx + 10.5, z: rz + 10.5, axis: 'ns' });
-        trafficLights.push({ x: rx - 10.5, z: rz - 10.5, axis: 'ew' });
+      if (rx >= -700 && rx <= 700 && (rz === 700 || rz === 1400 || rz === -700 || rz === -1400)) {
+        trafficLights.push({ x: rx + 14.5, z: rz + 14.5, axis: 'ns' });
+        trafficLights.push({ x: rx - 14.5, z: rz - 14.5, axis: 'ew' });
       }
     }
   }
 
-  // Glowing Roadside Billboards along Highways & Boulevards
   const billboardCoords: Array<[number, number, number]> = [
-    [13.5, 195, Math.PI / 2],
-    [-13.5, 325, -Math.PI / 2],
-    [13.5, -195, Math.PI / 2],
-    [-13.5, -330, -Math.PI / 2],
-    [125, 126, 0],
-    [-125, -126, Math.PI],
-    [255, 266, 0],
-    [-255, -266, Math.PI],
+    [22, 920, Math.PI / 2],
+    [-22, 1650, -Math.PI / 2],
+    [22, -920, Math.PI / 2],
+    [-22, -1650, -Math.PI / 2],
+    [520, 676, 0],
+    [-520, -676, Math.PI],
+    [1180, 1376, 0],
+    [-1180, -1376, Math.PI],
+    [-1720, 1370, Math.PI / 2],
+    [-1720, -1370, Math.PI / 2],
   ];
   billboardCoords.forEach(([x, z, yaw], i) => {
-    if (!buildings.some((b) => Math.abs(b.x - x) < b.w / 2 + 5 && Math.abs(b.z - z) < b.d / 2 + 5)) {
+    if (!buildings.some((b) => Math.abs(b.x - x) < b.w / 2 + 6 && Math.abs(b.z - z) < b.d / 2 + 6)) {
       billboards.push({ x, z, yaw, adIdx: i % 4 });
     }
   });
 
-  // Bus Stops along Vice Downtown & Northport Main Avenues
   const busStopCoords: Array<[number, number, number]> = [
-    [11, 215, -Math.PI / 2],
-    [-11, 355, Math.PI / 2],
-    [151, 210, -Math.PI / 2],
-    [11, -210, -Math.PI / 2],
-    [-129, -210, Math.PI / 2],
+    [18, 1050, -Math.PI / 2],
+    [-18, 1750, Math.PI / 2],
+    [718, 1050, -Math.PI / 2],
+    [18, -1050, -Math.PI / 2],
+    [-682, -1050, Math.PI / 2],
   ];
   busStopCoords.forEach(([x, z, yaw]) => {
     busStops.push({ x, z, yaw });
   });
 
   const treasures: TreasureSpot[] = [
-    { id: 'tr_1', x: 420, y: -2.6, z: 40, found: false, value: 850 },
-    { id: 'tr_2', x: 455, y: -3.2, z: -30, found: false, value: 1100 },
-    { id: 'tr_3', x: -120, y: -2.4, z: 0, found: false, value: 950 },
-    { id: 'tr_4', x: 120, y: -2.5, z: -15, found: false, value: 1200 },
-    { id: 'tr_5', x: 485, y: -3.4, z: 120, found: false, value: 1800 },
+    { id: 'tr_1', x: 2050, y: -2.6, z: 220, found: false, value: 850 },
+    { id: 'tr_2', x: 2180, y: -3.2, z: -180, found: false, value: 1100 },
+    { id: 'tr_3', x: -620, y: -2.4, z: 0, found: false, value: 950 },
+    { id: 'tr_4', x: 640, y: -2.5, z: -60, found: false, value: 1200 },
+    { id: 'tr_5', x: 2350, y: -3.4, z: 600, found: false, value: 1800 },
   ];
 
   return { buildings, interiors, treasures, weakTrees, roadSigns, billboards, busStops, trafficLights };
 }
 
 export const SIDE_ACTIVITIES: ActivityDef[] = [
-  { id: 'act_basketball', name: 'Ocean Beach Basketball', category: 'Sports', district: 'Ocean Drive', x: 335, z: 175, statReward: 'stamina', description: 'Sink rhythm jump shots on the beachfront court.', completedCount: 0 },
-  { id: 'act_tennis', name: 'Vice Country Club Tennis', category: 'Sports', district: 'Ocean Drive', x: 335, z: 245, statReward: 'focus', description: 'Time precision baseline rallies.', completedCount: 0 },
-  { id: 'act_minigolf', name: 'Boardwalk Mini-Golf', category: 'Sports', district: 'Ocean Drive', x: 335, z: 310, statReward: 'focus', description: 'Line up the angle & power putt across Neon Palms.', completedCount: 0 },
-  { id: 'act_pool', name: '8-Ball Pool', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -210, z: 210, statReward: 'relationship', description: 'Play 8-ball pool together at Neon Anchor Beer Bar.', completedCount: 0 },
-  { id: 'act_fishing', name: 'Vice Pier Fishing', category: 'Water & Wild', district: 'Vice Marina', x: 375, z: 350, statReward: 'focus', description: 'Cast off the marina pier & balance reel tension.', completedCount: 0 },
-  { id: 'act_hunting', name: 'Northport Woods Tracking', category: 'Water & Wild', district: 'Northport Woods', x: 70, z: -480, statReward: 'focus', description: 'Track & tag wild targets in the Everglades.', completedCount: 0 },
-  { id: 'act_scuba', name: 'Scuba Reef Treasure Hunt', category: 'Water & Wild', district: 'Vice Bay', x: 420, z: 40, statReward: 'cash', description: 'Dive underwater to recover sunken cartel crates.', completedCount: 0 },
-  { id: 'act_kayaking', name: 'Channel Kayaking', category: 'Water & Wild', district: 'Ocean Channel', x: 180, z: 0, statReward: 'stamina', description: 'Paddle through turquoise channel buoys.', completedCount: 0 },
-  { id: 'act_wrestling', name: 'Northport Backyard Brawl', category: 'Combat & Crime', district: 'Northport', x: -245, z: -178, statReward: 'muscle', description: 'Underground alley brawl — block, counter & slam.', completedCount: 0 },
-  { id: 'act_gym', name: 'Vice Iron Bench & Bag', category: 'Sports', district: 'Vice Downtown', x: 210, z: 480, statReward: 'muscle', description: 'Pump iron to boost Muscle & intimidation.', completedCount: 0 },
-  { id: 'act_range', name: 'Vice Armory Tactical Range', category: 'Combat & Crime', district: 'Vice Downtown', x: 70, z: 105, statReward: 'focus', description: 'Sharpen slow-motion Dead-Eye Focus.', completedCount: 0 },
-  { id: 'act_arcade', name: 'Galleria Retro Arcade', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -210, z: 350, statReward: 'focus', description: 'Beat the Neon Outrun high score.', completedCount: 0 },
-  { id: 'act_yoga', name: 'Central Park Sunrise Yoga', category: 'Sports', district: 'Leonida Central Park', x: 70, z: 342, statReward: 'stamina', description: 'Breath timing in Leonida Central Park.', completedCount: 0 },
-  { id: 'act_jetski', name: 'Vice Bay Jet-Ski Sprint', category: 'Water & Wild', district: 'Vice Marina', x: 382, z: 350, statReward: 'stamina', description: 'Hit wave gates at top throttle.', completedCount: 0 },
-  { id: 'act_streetrace', name: 'Grand Bridge Midnight Sprint', category: 'Combat & Crime', district: 'Grand Highway Bridge', x: 0, z: 96, statReward: 'cash', description: 'High-stakes bridge & boulevard sprint.', completedCount: 0 },
-  { id: 'act_armwrestle', name: 'Diner Arm Wrestling', category: 'Sports', district: 'Northport', x: -210, z: -350, statReward: 'muscle', description: 'Rapid-power grip duel.', completedCount: 0 },
-  { id: 'act_darts', name: 'Club Malibu Darts', category: 'Nightlife & Chill', district: 'Ocean Drive', x: 320, z: 210, statReward: 'focus', description: 'Nail bullseyes for cash & bond.', completedCount: 0 },
-  { id: 'act_poker', name: 'High-Stakes Vice Poker', category: 'Nightlife & Chill', district: 'Vice Downtown', x: 210, z: 350, statReward: 'cash', description: 'Bluff & read the table in downtown VIP room.', completedCount: 0 },
-  { id: 'act_bowling', name: 'Northport Lanes Bowling', category: 'Sports', district: 'Northport', x: -210, z: -210, statReward: 'relationship', description: 'Date-night strikes with Jason & Lucia.', completedCount: 0 },
-  { id: 'act_surfing', name: 'Paradise Key Reef Surfing', category: 'Water & Wild', district: 'Paradise Key', x: 485, z: 240, statReward: 'stamina', description: 'Carve the swell balance meter.', completedCount: 0 },
-  { id: 'act_parkour', name: 'Downtown Rooftop Parkour', category: 'Sports', district: 'Vice Downtown', x: -70, z: 210, statReward: 'stamina', description: 'Vault neon AC units under the clock.', completedCount: 0 },
-  { id: 'act_carmeet', name: 'Leonida Car Meet Showoff', category: 'Nightlife & Chill', district: 'Northport', x: 70, z: -210, statReward: 'relationship', description: 'Rev engines, flash lights & drift donuts.', completedCount: 0 },
-  { id: 'act_atm_skim', name: 'ATM Cyber Skimming', category: 'Combat & Crime', district: 'Vice Downtown', x: 210, z: 350, statReward: 'cash', description: 'Crack security pins without tripping alarms.', completedCount: 0 },
-  { id: 'act_drone', name: 'Airport Tower Drone Recon', category: 'Combat & Crime', district: 'Leonida Airport', x: -410, z: -335, statReward: 'focus', description: 'Scout cargo flights from control tower.', completedCount: 0 },
-  { id: 'act_photo', name: 'Everglades Wildlife Safari', category: 'Water & Wild', district: 'Northport Woods', x: -70, z: -480, statReward: 'relationship', description: 'Snap rare deer, birds & forest wildlife.', completedCount: 0 },
-  { id: 'act_gator', name: 'Bayou Gator Challenge', category: 'Water & Wild', district: 'Northport Woods', x: -140, z: -480, statReward: 'muscle', description: 'Spot and dodge stray gators in Northport Woods.', completedCount: 0 },
-  { id: 'act_karaoke', name: 'Northport Salsa & Karaoke', category: 'Nightlife & Chill', district: 'Northport', x: 210, z: -350, statReward: 'relationship', description: 'Sync beats with your partner.', completedCount: 0 },
-  { id: 'act_delivery', name: 'Express Vice Courier', category: 'Combat & Crime', district: 'Northport', x: 35, z: -172, statReward: 'cash', description: 'No-damage high-speed parcel run.', completedCount: 0 },
-  { id: 'act_boxing', name: 'Villa Home Gym Heavy Bag', category: 'Combat & Crime', district: 'Vice Downtown', x: 218, z: 216, statReward: 'muscle', description: 'Combo strike rhythm training at Jason’s Villa.', completedCount: 0 },
-  { id: 'act_triathlon', name: 'Vice Boardwalk Triathlon', category: 'Sports', district: 'Ocean Drive', x: 344, z: 190, statReward: 'stamina', description: 'Swim, sprint & cycle endurance test.', completedCount: 0 },
-  { id: 'act_blackjack', name: 'Ocean Drive Blackjack', category: 'Nightlife & Chill', district: 'Ocean Drive', x: 320, z: 210, statReward: 'cash', description: 'Hit 21 without busting.', completedCount: 0 },
-  { id: 'act_barber', name: 'Fresh Fade & Threads', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -70, z: 105, statReward: 'relationship', description: 'Swap outfit & style to drop police heat.', completedCount: 0 },
+  { id: 'act_basketball', name: 'Ocean Beach Basketball', category: 'Sports', district: 'Ocean Drive', x: 1680, z: 880, statReward: 'stamina', description: 'Sink rhythm jump shots on the beachfront court.', completedCount: 0 },
+  { id: 'act_tennis', name: 'Vice Country Club Tennis', category: 'Sports', district: 'Ocean Drive', x: 1680, z: 1220, statReward: 'focus', description: 'Time precision baseline rallies.', completedCount: 0 },
+  { id: 'act_minigolf', name: 'Boardwalk Mini-Golf', category: 'Sports', district: 'Ocean Drive', x: 1680, z: 1550, statReward: 'focus', description: 'Line up the angle & power putt across Neon Palms.', completedCount: 0 },
+  { id: 'act_pool', name: '8-Ball Pool', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -1050, z: 1050, statReward: 'relationship', description: 'Play 8-ball pool together at Neon Anchor Beer Bar.', completedCount: 0 },
+  { id: 'act_fishing', name: 'Vice Pier Fishing', category: 'Water & Wild', district: 'Vice Marina', x: 1820, z: 1750, statReward: 'focus', description: 'Cast off the marina pier & balance reel tension.', completedCount: 0 },
+  { id: 'act_hunting', name: 'Paleto Suburbs Tracking', category: 'Water & Wild', district: 'Paleto Suburbs', x: 350, z: -2320, statReward: 'focus', description: 'Track & tag wild targets in Paleto Pine Woods.', completedCount: 0 },
+  { id: 'act_scuba', name: 'Scuba Reef Treasure Hunt', category: 'Water & Wild', district: 'Vice Bay', x: 2050, z: 220, statReward: 'cash', description: 'Dive underwater to recover sunken cartel crates.', completedCount: 0 },
+  { id: 'act_kayaking', name: 'Channel Kayaking', category: 'Water & Wild', district: 'Ocean Channel', x: 750, z: 0, statReward: 'stamina', description: 'Paddle through turquoise channel buoys.', completedCount: 0 },
+  { id: 'act_wrestling', name: 'Northport Backyard Brawl', category: 'Combat & Crime', district: 'Northport', x: -1220, z: -880, statReward: 'muscle', description: 'Underground alley brawl — block, counter & slam.', completedCount: 0 },
+  { id: 'act_gym', name: 'Vice Iron Bench & Bag', category: 'Sports', district: 'Vice Downtown', x: 1050, z: 2400, statReward: 'muscle', description: 'Pump iron to boost Muscle & intimidation.', completedCount: 0 },
+  { id: 'act_range', name: 'Vice Armory Tactical Range', category: 'Combat & Crime', district: 'Vice Downtown', x: 350, z: 525, statReward: 'focus', description: 'Sharpen slow-motion Dead-Eye Focus.', completedCount: 0 },
+  { id: 'act_arcade', name: 'Galleria Retro Arcade', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -1050, z: 1750, statReward: 'focus', description: 'Beat the Neon Outrun high score.', completedCount: 0 },
+  { id: 'act_yoga', name: 'Central Park Sunrise Yoga', category: 'Sports', district: 'Leonida Central Park', x: 350, z: 1715, statReward: 'stamina', description: 'Breath timing in Leonida Central Park.', completedCount: 0 },
+  { id: 'act_jetski', name: 'Vice Bay Jet-Ski Sprint', category: 'Water & Wild', district: 'Vice Marina', x: 1840, z: 1750, statReward: 'stamina', description: 'Hit wave gates at top throttle.', completedCount: 0 },
+  { id: 'act_streetrace', name: 'Grand Bridge Midnight Sprint', category: 'Combat & Crime', district: 'Grand Highway Bridge', x: 0, z: 480, statReward: 'cash', description: 'High-stakes bridge & boulevard sprint.', completedCount: 0 },
+  { id: 'act_armwrestle', name: 'Diner Arm Wrestling', category: 'Sports', district: 'Northport', x: -1050, z: -1750, statReward: 'muscle', description: 'Rapid-power grip duel.', completedCount: 0 },
+  { id: 'act_darts', name: 'Club Malibu Darts', category: 'Nightlife & Chill', district: 'Ocean Drive', x: 1580, z: 1050, statReward: 'focus', description: 'Nail bullseyes for cash & bond.', completedCount: 0 },
+  { id: 'act_poker', name: 'High-Stakes Vice Poker', category: 'Nightlife & Chill', district: 'Vice Downtown', x: 1050, z: 1750, statReward: 'cash', description: 'Bluff & read the table in downtown VIP room.', completedCount: 0 },
+  { id: 'act_bowling', name: 'Northport Lanes Bowling', category: 'Sports', district: 'Northport', x: -1050, z: -1050, statReward: 'relationship', description: 'Date-night strikes with Jason & Lucia.', completedCount: 0 },
+  { id: 'act_surfing', name: 'Paradise Key Reef Surfing', category: 'Water & Wild', district: 'Paradise Key', x: 2450, z: 1100, statReward: 'stamina', description: 'Carve the swell balance meter.', completedCount: 0 },
+  { id: 'act_parkour', name: 'Downtown Rooftop Parkour', category: 'Sports', district: 'Vice Downtown', x: -350, z: 1050, statReward: 'stamina', description: 'Vault neon AC units under the clock.', completedCount: 0 },
+  { id: 'act_carmeet', name: 'Leonida Car Meet Showoff', category: 'Nightlife & Chill', district: 'Northport', x: 350, z: -1050, statReward: 'relationship', description: 'Rev engines, flash lights & drift donuts.', completedCount: 0 },
+  { id: 'act_atm_skim', name: 'ATM Cyber Skimming', category: 'Combat & Crime', district: 'Vice Downtown', x: 1050, z: 1750, statReward: 'cash', description: 'Crack security pins without tripping alarms.', completedCount: 0 },
+  { id: 'act_drone', name: 'Airport Tower Drone Recon', category: 'Combat & Crime', district: 'Northport Airport', x: -1870, z: -1340, statReward: 'focus', description: 'Scout cargo flights from control tower.', completedCount: 0 },
+  { id: 'act_photo', name: 'Paleto Wildlife Safari', category: 'Water & Wild', district: 'Paleto Suburbs', x: -350, z: -2320, statReward: 'relationship', description: 'Snap rare deer, birds & forest wildlife.', completedCount: 0 },
+  { id: 'act_gator', name: 'Bayou Gator Challenge', category: 'Water & Wild', district: 'Paleto Suburbs', x: -700, z: -2320, statReward: 'muscle', description: 'Spot and dodge stray gators in Paleto Suburbs.', completedCount: 0 },
+  { id: 'act_karaoke', name: 'Northport Salsa & Karaoke', category: 'Nightlife & Chill', district: 'Northport', x: 1050, z: -1750, statReward: 'relationship', description: 'Sync beats with your partner.', completedCount: 0 },
+  { id: 'act_delivery', name: 'Express Vice Courier', category: 'Combat & Crime', district: 'Northport', x: 190, z: -860, statReward: 'cash', description: 'No-damage high-speed parcel run.', completedCount: 0 },
+  { id: 'act_boxing', name: 'Villa Home Gym Heavy Bag', category: 'Combat & Crime', district: 'Vice Downtown', x: 1060, z: 1055, statReward: 'muscle', description: 'Combo strike rhythm training at Jason’s Villa.', completedCount: 0 },
+  { id: 'act_triathlon', name: 'Vice Boardwalk Triathlon', category: 'Sports', district: 'Ocean Drive', x: 1715, z: 950, statReward: 'stamina', description: 'Swim, sprint & cycle endurance test.', completedCount: 0 },
+  { id: 'act_blackjack', name: 'Ocean Drive Blackjack', category: 'Nightlife & Chill', district: 'Ocean Drive', x: 1580, z: 1050, statReward: 'cash', description: 'Hit 21 without busting.', completedCount: 0 },
+  { id: 'act_barber', name: 'Fresh Fade & Threads', category: 'Nightlife & Chill', district: 'Vice Downtown', x: -350, z: 525, statReward: 'relationship', description: 'Swap outfit & style to drop police heat.', completedCount: 0 },
 ];
 
 export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
@@ -1521,13 +1702,13 @@ export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
     handle: '@ViceDriftKing',
     author: 'Marco_V8',
     district: 'Northport',
-    caption: 'LIVE: Cross the Grand Leonida Bridge! Vice Exotic Motors in Northport just stocked Stage 2 Turbos & hypercars!',
+    caption: 'LIVE: Cross the Grand Leonida Bridge! Vice Exotic Motors in Northport just stocked Sport Bikes, Trucks & hypercars!',
     isLive: true,
     viewers: 4820,
     likes: 12900,
     eventKind: 'takeover',
-    x: 70,
-    z: -210,
+    x: 350,
+    z: -1050,
     timeAgo: 'LIVE NOW',
     visited: false,
   },
@@ -1535,14 +1716,14 @@ export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
     id: 'soc_2',
     handle: '@LeonidaAviation',
     author: 'Pilot_Kira',
-    district: 'Leonida Airport',
-    caption: 'Helicopter & Stunt Plane charters parked on Runway 27 at Northport Airport Wing!',
+    district: 'South Vice Airport',
+    caption: 'Commercial charters ($150) departing South Vice & Northport Airports! Stunt planes & choppers on both runways!',
     isLive: true,
     viewers: 3110,
     likes: 9400,
     eventKind: 'chase',
-    x: -410,
-    z: -335,
+    x: -1850,
+    z: 1365,
     timeAgo: 'LIVE NOW',
     visited: false,
   },
@@ -1551,13 +1732,13 @@ export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
     handle: '@DowntownAlert305',
     author: 'ViceScanner',
     district: 'Vice Downtown',
-    caption: 'Burger Shot Diner hiring Grill Chefs ($15-$35/order) & Delivery Moped Riders ($40-$80/drop)!',
+    caption: 'Burger Shot Diner serving fresh Vice Burgers ($15) & hiring Delivery Scooty Riders ($40-$80/drop)!',
     isLive: true,
     viewers: 6190,
     likes: 15200,
     eventKind: 'armored',
-    x: 70,
-    z: 210,
+    x: 350,
+    z: 1050,
     timeAgo: '3m ago',
     visited: false,
   },
@@ -1571,8 +1752,8 @@ export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
     viewers: 2840,
     likes: 7600,
     eventKind: 'beachparty',
-    x: 560,
-    z: 230,
+    x: 2650,
+    z: 1060,
     timeAgo: '5m ago',
     visited: false,
   },
@@ -1586,8 +1767,8 @@ export const INITIAL_SOCIAL_POSTS: SocialPost[] = [
     viewers: 1940,
     likes: 4300,
     eventKind: 'beachparty',
-    x: 70,
-    z: 350,
+    x: 350,
+    z: 1750,
     timeAgo: 'LIVE NOW',
     visited: false,
   },
@@ -1601,22 +1782,22 @@ export const INITIAL_MISSIONS: MissionDef[] = [
     district: 'Ocean Drive',
     summary: 'Invite Lucia into your car from Jason’s Villa, hit 24/7 Ocean Mart together, wipe CCTV, and escape clean.',
     duoRecommended: true,
-    targetX: 320,
-    targetZ: 105,
+    targetX: 1580,
+    targetZ: 525,
     rewardCash: 1650,
     rewardBond: 12,
     stage: 'available',
-    objectiveText: 'Bring Lucia (Phone/E/K) & hit 24/7 Ocean Mart on Ocean Drive, rob & wipe CCTV.',
+    objectiveText: 'Bring Lucia & hit 24/7 Ocean Mart on Ocean Drive, rob & wipe CCTV.',
   },
   {
     id: 'mis_2',
     title: 'Bridge Run: Northport Exotic Boost',
     giver: 'Uncle Jack (Fence)',
     district: 'Northport',
-    summary: 'Cross the Grand Leonida Highway Bridge into Northport, clone a Luxury Exotic and deliver to the Chop Shop Fence.',
+    summary: 'Cross the Grand Leonida Highway Bridge into Northport, steal a Luxury Exotic and deliver to the Chop Shop Fence.',
     duoRecommended: false,
-    targetX: -245,
-    targetZ: -178,
+    targetX: -1220,
+    targetZ: -880,
     rewardCash: 2800,
     rewardBond: 8,
     stage: 'available',
@@ -1629,8 +1810,8 @@ export const INITIAL_MISSIONS: MissionDef[] = [
     district: 'Vice Downtown',
     summary: 'Coordinate a dual-protagonist smash-and-grab at Vangelico Vice Jewelry, ditch heat by changing outfits at Vice Threads.',
     duoRecommended: true,
-    targetX: -70,
-    targetZ: 350,
+    targetX: -350,
+    targetZ: 1750,
     rewardCash: 4500,
     rewardBond: 18,
     stage: 'available',
@@ -1643,8 +1824,8 @@ export const INITIAL_MISSIONS: MissionDef[] = [
     district: 'Vice Bay',
     summary: 'Dive into the Ocean Channel reef and recover submerged loot crates before patrol boats sweep the coast.',
     duoRecommended: false,
-    targetX: 420,
-    targetZ: 40,
+    targetX: 2050,
+    targetZ: 220,
     rewardCash: 3200,
     rewardBond: 10,
     stage: 'available',
@@ -1657,29 +1838,86 @@ export const INITIAL_MISSIONS: MissionDef[] = [
     district: 'Vice Downtown',
     summary: 'Storm Leonida Reserve Bank with Armory weapons & explosives, clean the vault, and escape across the Highway Bridge!',
     duoRecommended: true,
-    targetX: 210,
-    targetZ: 350,
+    targetX: 1050,
+    targetZ: 1750,
     rewardCash: 12000,
     rewardBond: 25,
     stage: 'available',
     objectiveText: 'Storm Leonida Reserve Bank, clean the vault & escape Vice PD!',
   },
+  {
+    id: 'mis_6',
+    title: 'Airport Cargo Smuggling',
+    giver: 'Kira (Pilot)',
+    district: 'South Vice Airport',
+    summary: 'Enter the Security Gate at South Vice Airport, board an airplane or charter flight, and touch down at Northport Airport!',
+    duoRecommended: false,
+    targetX: -1870,
+    targetZ: -1340,
+    rewardCash: 5500,
+    rewardBond: 12,
+    stage: 'available',
+    objectiveText: 'Fly a plane or charter ticket from South Vice Airport to Northport Airport.',
+  },
+  {
+    id: 'mis_7',
+    title: 'Highway Truck Hijack',
+    giver: 'Uncle Jack (Fence)',
+    district: 'Grand Highway Bridge',
+    summary: 'Commandeer a heavy Cargo Truck and haul its trailer load safely to the Port Vice Dock Fence!',
+    duoRecommended: false,
+    targetX: 1280,
+    targetZ: 1860,
+    rewardCash: 4200,
+    rewardBond: 10,
+    stage: 'available',
+    objectiveText: 'Hijack any Cargo Truck and drive it to Port Vice Dock Fence.',
+  },
+  {
+    id: 'mis_8',
+    title: 'Midnight Street Bike Race',
+    giver: 'Marco_V8',
+    district: 'Vice Downtown',
+    summary: 'Hop on a Sport Bike and tear across the Grand Leonida Highway Bridge into Northport Exotic Motors!',
+    duoRecommended: false,
+    targetX: 350,
+    targetZ: -1050,
+    rewardCash: 3800,
+    rewardBond: 12,
+    stage: 'available',
+    objectiveText: 'Ride a Sport Bike to Vice Exotic Motors in Northport.',
+  },
+  {
+    id: 'mis_9',
+    title: 'VIP Taxi Escort',
+    giver: 'Vice Cab Dispatch',
+    district: 'Vice Downtown',
+    summary: 'Book a Smart Phone Taxi or drive a Cab to pick up & complete a paid VIP drop at Leonida Reserve Bank.',
+    duoRecommended: true,
+    targetX: 1050,
+    targetZ: 1750,
+    rewardCash: 2400,
+    rewardBond: 15,
+    stage: 'available',
+    objectiveText: 'Take or drive a Taxi to Leonida Reserve Bank and pay the fare cleanly.',
+  },
 ];
 
 export function getDistrictAt(x: number, z: number): string {
   if (getBridgeDeckInfo(x, z).onBridge) return 'Grand Highway Bridge';
-  if (Math.hypot(x - 560, z - 240) < 82) return 'Paradise Key';
-  if (Math.hypot(x - 560, z + 240) < 82) return 'Starlight Atoll';
+  if (Math.hypot(x - 2650, z - 1100) < 250) return 'Paradise Key';
+  if (Math.hypot(x - 2650, z + 1100) < 250) return 'Starlight Atoll';
   if (isWaterChannel(x, z)) {
-    return Math.abs(z) <= 78 && x < 390 && x > -360 ? 'Ocean Channel' : 'Vice Bay (Ocean)';
+    return Math.abs(z) <= 380 && x < 1850 && x > -1850 ? 'Ocean Channel' : 'Vice Bay (Ocean)';
   }
-  if (x < -310 && z < -240) return 'Leonida Airport';
-  if (z < -435) return 'Northport Woods';
-  if (z < -70) return 'Northport';
+  if (x <= -1750 && z > 1000) return 'South Vice Airport';
+  if (x <= -1750 && z < -1000) return 'Northport Airport';
+  if (z < -2150) return 'Paleto Suburbs';
+  if (z < -360) return 'Northport';
   if (Math.abs(x - CENTRAL_PARK.cx) <= CENTRAL_PARK.w / 2 && Math.abs(z - CENTRAL_PARK.cz) <= CENTRAL_PARK.d / 2) {
     return 'Leonida Central Park';
   }
-  if (x > 290 && z > 300) return 'Vice Marina';
-  if (x > 280) return 'Ocean Drive';
+  if (x > 1480 && z > 1500) return 'Vice Marina';
+  if (x > 1420) return 'Ocean Drive';
   return 'Vice Downtown';
 }

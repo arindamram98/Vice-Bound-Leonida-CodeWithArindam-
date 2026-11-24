@@ -126,8 +126,8 @@ export const BurgerJobModal: React.FC<BurgerJobModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-4 pointer-events-auto">
-      <div className="bg-[#0e1018] border border-orange-400/35 rounded-2xl p-6 max-w-2xl w-full space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto vice-scroll">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-2.5 sm:p-4 pointer-events-auto">
+      <div className="bg-[#0e1018] border border-orange-400/35 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-2xl w-full space-y-3 sm:space-y-4 shadow-2xl max-h-[88dvh] overflow-y-auto vice-scroll">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3">
           <div className="flex items-center gap-3">

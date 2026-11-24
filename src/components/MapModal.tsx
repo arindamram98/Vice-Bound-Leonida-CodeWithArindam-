@@ -379,7 +379,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-2 sm:p-4 pointer-events-auto">
-      <div className="bg-[#0d1018] border border-white/15 rounded-2xl w-[94vw] h-[88dvh] flex flex-col overflow-hidden shadow-2xl">
+      <div className="bg-[#0d1018] border border-white/15 rounded-2xl w-[94vw] max-w-[94vw] h-[88dvh] max-h-[88dvh] flex flex-col overflow-hidden shadow-2xl">
         {/* Top Bar */}
         <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 border-b border-white/10 bg-[#121622] shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -446,7 +446,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
         </div>
 
         {/* Category Filter Bar */}
-        <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-[#0f131f] flex items-center gap-1.5 overflow-x-auto shrink-0">
+        <div className="px-3 sm:px-4 py-1.5 sm:py-2 border-b border-white/10 bg-[#0f131f] flex items-center gap-1.5 overflow-x-auto vice-scroll-x shrink-0">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -466,7 +466,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
 
         {/* Map Canvas + Right Directory */}
         <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 min-h-0 overflow-hidden">
-          <div className="lg:col-span-8 p-2.5 sm:p-4 flex-1 flex flex-col gap-2 min-h-[46dvh] lg:min-h-0 bg-[#0a0c13]">
+          <div className="lg:col-span-8 p-2 sm:p-4 flex-1 flex flex-col gap-1.5 sm:gap-2 min-h-[34dvh] lg:min-h-0 bg-[#0a0c13]">
             <div className="relative flex-1 min-h-0 flex items-center justify-center">
               <canvas
                 ref={canvasRef}
@@ -492,7 +492,7 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint 
             </div>
           </div>
 
-          <div className="lg:col-span-4 border-l border-white/10 p-4 flex flex-col gap-2.5 min-h-0 bg-[#10131e]">
+          <div className="lg:col-span-4 border-t lg:border-t-0 lg:border-l border-white/10 p-2.5 sm:p-4 flex flex-col gap-2 min-h-[120px] max-h-[30dvh] lg:max-h-none lg:min-h-0 bg-[#10131e]">
             <div className="flex items-center gap-2 text-xs font-semibold text-neutral-300 uppercase tracking-wider">
               <MapPin className="w-4 h-4 text-[#38bdf8]" /> Locations &amp; Quick GPS ({filteredDirectory.length})
             </div>

@@ -4,43 +4,61 @@
   html,
   body,
   #root {
-    width: 100%;
-    height: 100%;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
-    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
     background-color: #09090d;
     color: #f4f4f6;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 }
 
 .safe-area-pad {
-  padding-top: max(0.5rem, env(safe-area-inset-top));
-  padding-right: max(0.625rem, env(safe-area-inset-right));
-  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
-  padding-left: max(0.625rem, env(safe-area-inset-left));
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
 }
 
 .font-display {
-  font-family: "Outfit", system-ui, sans-serif;
+  font-family: 'Outfit', system-ui, sans-serif;
 }
 
 .font-mono-num {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom sleek dark scrollbar for smartphone & drawers */
+/* Custom sleek scrollbar for modal interiors */
+.vice-scroll {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.vice-scroll-x {
+  touch-action: pan-x;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .vice-scroll::-webkit-scrollbar {
   width: 5px;
+  height: 5px;
 }
 .vice-scroll::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.04);
 }
 .vice-scroll::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.18);
-  border-radius: 3px;
+  border-radius: 9999px;
 }

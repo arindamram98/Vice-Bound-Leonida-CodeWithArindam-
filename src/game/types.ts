@@ -189,7 +189,10 @@ export type VehicleTier =
   | 'taxi'
   | 'muscle'
   | 'pickup'
+  | 'truck'
   | 'bike'
+  | 'sportbike'
+  | 'scooty'
   | 'heli'
   | 'plane';
 
@@ -233,6 +236,10 @@ export interface VehicleState {
   colorHex: string;
   nitroCharge?: number;
   nitroActive?: boolean;
+  airspeed?: number;
+  altitude?: number;
+  pitch?: number;
+  roll?: number;
 }
 
 export type BuildingArchStyle =
@@ -441,6 +448,7 @@ export type MinimapEntityKind =
   | 'job'
   | 'boat'
   | 'burgershot'
+  | 'taxistand'
   | 'bank'
   | 'drop';
 
@@ -464,6 +472,23 @@ export interface MissionDef {
   rewardBond: number;
   stage: 'available' | 'active' | 'completed';
   objectiveText: string;
+}
+
+export interface TaxiRideState {
+  status: 'idle' | 'en_route_pickup' | 'waiting_board' | 'driving_to_dest' | 'payment_due';
+  destLabel: string;
+  destX: number;
+  destZ: number;
+  fare: number;
+  upiId: string;
+  qrSeed: number;
+}
+
+export interface FlightCutsceneState {
+  active: boolean;
+  fromName: string;
+  toName: string;
+  progress: number;
 }
 
 export interface HudSnapshot {
@@ -491,7 +516,7 @@ export interface HudSnapshot {
   aiming: boolean;
   contextPrompt: string | null;
   contextAction: string | null;
-  contextKind: 'door' | 'shop' | 'npc' | 'activity' | 'seat' | 'fuel' | null;
+  contextKind: 'door' | 'shop' | 'npc' | 'activity' | 'seat' | 'fuel' | 'airport_ticket' | 'taxi_stand' | null;
   waypoint: { x: number; z: number; label: string } | null;
   gpsRoute: Array<{ x: number; z: number }>;
   activeMission: MissionDef | null;
@@ -506,6 +531,10 @@ export interface HudSnapshot {
   stocks: StockAsset[];
   businesses: BusinessProperty[];
   darkWebDrop: DarkWebDrop | null;
+  taxiRide: TaxiRideState;
+  flightCutscene: FlightCutsceneState | null;
+  canEatAtBurgerShop: boolean;
+  canInvitePartnerSit: boolean;
   totalBuildingsCount: number;
   totalInteriorsCount: number;
   underwaterTreasureFound: number;

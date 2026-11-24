@@ -95,12 +95,13 @@ function sdRoundBox2D(px: number, pz: number, cx: number, cz: number, hx: number
  * Positive inside water, negative on land.
  */
 export function getWaterShoreDistance(x: number, z: number): number {
-  const dSouth = sdRoundBox2D(x, z, 5, 305, 355, 230, 14);
-  const dNorth = sdRoundBox2D(x, z, -5, -307.5, 345, 232.5, 14);
-  const dAirport = sdRoundBox2D(x, z, -440, -385, 120, 135, 14);
-  const dIsland1 = sdRoundBox2D(x, z, 560, 240, 72, 72, 32);
-  const dIsland2 = sdRoundBox2D(x, z, 560, -240, 72, 72, 32);
-  return Math.min(dSouth, dNorth, dAirport, dIsland1, dIsland2);
+  const dSouth = sdRoundBox2D(x, z, 25, 1525, 1775, 1150, 70);
+  const dNorth = sdRoundBox2D(x, z, -25, -1537.5, 1725, 1162.5, 70);
+  const dAirSouth = sdRoundBox2D(x, z, -2175, 1550, 425, 420, 36);
+  const dAirNorth = sdRoundBox2D(x, z, -2175, -1550, 425, 420, 36);
+  const dIsland1 = sdRoundBox2D(x, z, 2650, 1100, 220, 220, 90);
+  const dIsland2 = sdRoundBox2D(x, z, 2650, -1100, 220, 220, 90);
+  return Math.min(dSouth, dNorth, dAirSouth, dAirNorth, dIsland1, dIsland2);
 }
 
 /**
@@ -177,7 +178,7 @@ export interface OceanWaterSystem {
 }
 
 export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWaterSystem {
-  const geo = new THREE.PlaneGeometry(1900, 1600, 210, 180);
+  const geo = new THREE.PlaneGeometry(7800, 7400, 220, 200);
   geo.rotateX(-Math.PI / 2);
 
   const material = new THREE.ShaderMaterial({
@@ -211,12 +212,13 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
       }
 
       float evalShoreSignedDist(vec2 xz) {
-        float dSouth = sdRoundBox(xz, vec2(5.0, 305.0), vec2(355.0, 230.0), 14.0);
-        float dNorth = sdRoundBox(xz, vec2(-5.0, -307.5), vec2(345.0, 232.5), 14.0);
-        float dAirport = sdRoundBox(xz, vec2(-440.0, -385.0), vec2(120.0, 135.0), 14.0);
-        float dIsland1 = sdRoundBox(xz, vec2(560.0, 240.0), vec2(72.0, 72.0), 32.0);
-        float dIsland2 = sdRoundBox(xz, vec2(560.0, -240.0), vec2(72.0, 72.0), 32.0);
-        return min(dSouth, min(dNorth, min(dAirport, min(dIsland1, dIsland2))));
+        float dSouth = sdRoundBox(xz, vec2(25.0, 1525.0), vec2(1775.0, 1150.0), 70.0);
+        float dNorth = sdRoundBox(xz, vec2(-25.0, -1537.5), vec2(1725.0, 1162.5), 70.0);
+        float dAirSouth = sdRoundBox(xz, vec2(-2175.0, 1550.0), vec2(425.0, 420.0), 36.0);
+        float dAirNorth = sdRoundBox(xz, vec2(-2175.0, -1550.0), vec2(425.0, 420.0), 36.0);
+        float dIsland1 = sdRoundBox(xz, vec2(2650.0, 1100.0), vec2(220.0, 220.0), 90.0);
+        float dIsland2 = sdRoundBox(xz, vec2(2650.0, -1100.0), vec2(220.0, 220.0), 90.0);
+        return min(dSouth, min(dNorth, min(dAirSouth, min(dAirNorth, min(dIsland1, dIsland2)))));
       }
 
       float evalDisplacementHeight(vec2 xz, float ampScale) {
@@ -285,12 +287,13 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
       }
 
       float evalShoreOffset(vec2 xz) {
-        float dSouth = sdRoundBoxF(xz, vec2(5.0, 305.0), vec2(355.0, 230.0), 14.0);
-        float dNorth = sdRoundBoxF(xz, vec2(-5.0, -307.5), vec2(345.0, 232.5), 14.0);
-        float dAirport = sdRoundBoxF(xz, vec2(-440.0, -385.0), vec2(120.0, 135.0), 14.0);
-        float dIsland1 = sdRoundBoxF(xz, vec2(560.0, 240.0), vec2(72.0, 72.0), 32.0);
-        float dIsland2 = sdRoundBoxF(xz, vec2(560.0, -240.0), vec2(72.0, 72.0), 32.0);
-        return min(dSouth, min(dNorth, min(dAirport, min(dIsland1, dIsland2))));
+        float dSouth = sdRoundBoxF(xz, vec2(25.0, 1525.0), vec2(1775.0, 1150.0), 70.0);
+        float dNorth = sdRoundBoxF(xz, vec2(-25.0, -1537.5), vec2(1725.0, 1162.5), 70.0);
+        float dAirSouth = sdRoundBoxF(xz, vec2(-2175.0, 1550.0), vec2(425.0, 420.0), 36.0);
+        float dAirNorth = sdRoundBoxF(xz, vec2(-2175.0, -1550.0), vec2(425.0, 420.0), 36.0);
+        float dIsland1 = sdRoundBoxF(xz, vec2(2650.0, 1100.0), vec2(220.0, 220.0), 90.0);
+        float dIsland2 = sdRoundBoxF(xz, vec2(2650.0, -1100.0), vec2(220.0, 220.0), 90.0);
+        return min(dSouth, min(dNorth, min(dAirSouth, min(dAirNorth, min(dIsland1, dIsland2)))));
       }
 
       void main() {
@@ -368,8 +371,8 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
         color = mix(color, foamColor, totalFoam);
 
         float dist = length(cameraPosition - vWorldPos);
-        float fogAmt = 1.0 - exp(-0.00075 * dist * 0.00075 * dist);
-        color = mix(color, uSkyHorizon, clamp(fogAmt, 0.0, 0.82));
+        float fogAmt = 1.0 - exp(-0.00018 * dist * 0.00018 * dist);
+        color = mix(color, uSkyHorizon, clamp(fogAmt, 0.0, 0.85));
 
         float shoreFeather = smoothstep(-2.2, 0.8, surfCoord);
         float alpha = shoreFeather * clamp(mix(0.72, 0.95, shallowMask * 0.85 + totalFoam * 0.35), 0.0, 0.97);
@@ -379,7 +382,7 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
   });
 
   const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(80, 0.0, 0);
+  mesh.position.set(150, 0.0, 0);
 
   return {
     mesh,

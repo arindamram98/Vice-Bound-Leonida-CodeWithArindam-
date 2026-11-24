@@ -40,7 +40,7 @@ export default function App() {
   const engine = engineRef.current;
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#09090d]">
+    <div className="fixed inset-0 w-screen h-[100dvh] max-h-[100dvh] overflow-hidden bg-[#09090d]">
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
       {hud && hud.screen === 'title' && (
@@ -52,6 +52,7 @@ export default function App() {
           onToggleTouchControls={() =>
             engine?.updateControlSettings({ touchControls: !hud.controlSettings.touchControls })
           }
+          onUpdateControlSettings={(partial) => engine?.updateControlSettings(partial)}
         />
       )}
 

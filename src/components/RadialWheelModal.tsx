@@ -175,26 +175,26 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
   const hovered = hoveredIdx !== null ? weaponSlices[hoveredIdx] : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-4 pointer-events-auto">
-      <div className="bg-[#0b0d15] border border-white/15 rounded-3xl p-5 max-w-xl w-full flex flex-col items-center gap-3.5 shadow-2xl">
-        <div className="w-full flex items-center justify-between">
-          <div>
-            <h3 className="font-display font-bold text-lg text-white">Leonida Weapon &amp; Gear Wheel</h3>
-            <p className="text-[11px] text-neutral-400">
-              Select Fists, All 9 Arsenal Weapons, Meds &amp; Radio · Press [Q] or Esc to close
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-2.5 sm:p-4 pointer-events-auto">
+      <div className="bg-[#0b0d15] border border-white/15 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 max-w-[94vw] sm:max-w-xl w-full max-h-[88dvh] overflow-y-auto vice-scroll flex flex-col items-center gap-2.5 sm:gap-3.5 shadow-2xl">
+        <div className="w-full flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <h3 className="font-display font-bold text-base sm:text-lg text-white truncate">Leonida Weapon &amp; Gear Wheel</h3>
+            <p className="text-[10px] sm:text-[11px] text-neutral-400 truncate">
+              Select Fists, 9 Arsenal Weapons, Meds &amp; Radio
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Interactive SVG Radial Weapon Wheel */}
-        <div className="relative w-[420px] max-w-full aspect-square flex items-center justify-center">
+        <div className="relative w-[min(360px,50dvh,78vw)] aspect-square flex items-center justify-center shrink-0">
           <svg viewBox="0 0 460 460" className="w-full h-full select-none">
             {weaponSlices.map((slice, idx) => {
               const a0 = -Math.PI / 2 + idx * step - step / 2 + 0.02;
@@ -290,7 +290,7 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
         </div>
 
         {/* Survival & Tactical Quick Strip */}
-        <div className="w-full grid grid-cols-5 gap-1.5 text-[10px]">
+        <div className="w-full grid grid-cols-5 gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] shrink-0">
           <button
             type="button"
             disabled={player.traumaKits <= 0}
@@ -298,7 +298,7 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
               onUseTraumaKit();
               onClose();
             }}
-            className="p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-rose-400/50 disabled:opacity-40 text-rose-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-rose-400/50 disabled:opacity-40 text-rose-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
           >
             <HeartPulse className="w-3.5 h-3.5" /> Trauma ({player.traumaKits})
           </button>
@@ -309,7 +309,7 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
               onUsePainkiller();
               onClose();
             }}
-            className="p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-sky-400/50 disabled:opacity-40 text-sky-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-sky-400/50 disabled:opacity-40 text-sky-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
           >
             <Pill className="w-3.5 h-3.5" /> Pills ({player.painkillers})
           </button>
@@ -320,7 +320,7 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
               onEatBurger();
               onClose();
             }}
-            className="p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-orange-400/50 disabled:opacity-40 text-orange-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-orange-400/50 disabled:opacity-40 text-orange-300 font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
           >
             <Utensils className="w-3.5 h-3.5" /> Burger ({player.burgers})
           </button>
@@ -331,9 +331,9 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
               onCleanWeapon();
               onClose();
             }}
-            className="p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-[#2dd4bf]/50 disabled:opacity-40 text-[#2dd4bf] font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-lg bg-[#151825] border border-white/10 hover:border-[#2dd4bf]/50 disabled:opacity-40 text-[#2dd4bf] font-semibold flex flex-col items-center gap-0.5 cursor-pointer"
           >
-            <Wrench className="w-3.5 h-3.5" /> Clean Gun
+            <Wrench className="w-3.5 h-3.5" /> Clean
           </button>
           <button
             type="button"
@@ -341,18 +341,18 @@ export const RadialWheelModal: React.FC<RadialWheelModalProps> = ({
               onToggleUmbrella();
               onClose();
             }}
-            className={`p-2 rounded-lg border font-semibold flex flex-col items-center gap-0.5 cursor-pointer ${
+            className={`p-1.5 sm:p-2 rounded-lg border font-semibold flex flex-col items-center gap-0.5 cursor-pointer ${
               player.umbrellaOpen
                 ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
                 : 'bg-[#151825] border-white/10 text-neutral-300'
             }`}
           >
-            <Umbrella className="w-3.5 h-3.5" /> Umbrella
+            <Umbrella className="w-3.5 h-3.5" /> Umbr
           </button>
         </div>
 
         {/* Bottom Radio Bar */}
-        <div className="w-full flex items-center justify-between bg-[#141826] border border-white/10 rounded-xl px-3.5 py-2 text-xs gap-2">
+        <div className="w-full flex flex-wrap items-center justify-between bg-[#141826] border border-white/10 rounded-xl px-3 py-1.5 sm:py-2 text-xs gap-2 shrink-0">
           <div className="flex items-center gap-2 text-neutral-300">
             <Sparkles className="w-3.5 h-3.5 text-[#ff5a6e]" />
             <span>Station: <strong className="text-white">{hud.radioStation}</strong></span>

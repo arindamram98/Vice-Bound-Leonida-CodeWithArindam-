@@ -7,6 +7,7 @@ import {
   Coffee,
   Crosshair,
   Flame,
+  Globe,
   Heart,
   Home,
   KeyRound,
@@ -129,8 +130,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   if (modal === 'partner') {
     const partnerName = String(data.partnerName ?? (hud.activeId === 'jason' ? 'Lucia Caminos' : 'Jason Duval'));
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-[#2dd4bf]" />
@@ -217,8 +218,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     ];
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-lg w-full max-h-[88dvh] flex flex-col space-y-3 sm:space-y-4 overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Crosshair className="w-5 h-5 text-orange-400" />
@@ -238,7 +239,7 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
               <span className="text-orange-300">Molotovs {player.molotovs}</span>
             </span>
           </div>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto vice-scroll pr-1">
+          <div className="space-y-2 flex-1 min-h-0 overflow-y-auto vice-scroll pr-1">
             {arsenal.map((item) => {
               const owned = isOwned(item.id);
               return (
@@ -322,8 +323,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     const picked = outfits.find((o) => o.id === selectedOutfit) ?? outfits[0];
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-pink-500/30 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-pink-500/30 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-lg w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shirt className="w-5 h-5 text-pink-400" />
@@ -404,8 +405,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     ) || hud.businesses.find((b) => b.kind === 'bungalow');
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-sky-400/35 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-sky-400/35 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Home className="w-5 h-5 text-[#38bdf8]" />
@@ -457,8 +458,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   // LEONIDA RESERVE BANK ATM & PROPERTY ACQUISITION
   if (modal === 'bank') {
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-emerald-500/35 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-emerald-500/35 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-lg w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Landmark className="w-5 h-5 text-emerald-400" />
@@ -544,8 +545,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     };
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-amber-400" />
@@ -580,21 +581,41 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   if (modal === 'pause') {
     const cs = hud.controlSettings;
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="w-5 h-5 text-[#2dd4bf]" />
-              <h3 className="font-display font-bold text-xl text-white">Pause &amp; Control Settings</h3>
+              <h3 className="font-display font-bold text-lg sm:text-xl text-white">Pause &amp; Control Settings</h3>
             </div>
             <button type="button" onClick={onClose} className="p-1.5 rounded bg-white/10 text-white cursor-pointer">
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Manual Touch Controls & PC Key Hints Toggles */}
-          <div className="bg-[#151825] border border-white/10 rounded-xl p-3.5 space-y-2.5">
+          {/* Language, Touch Controls & PC Key Hints Toggles */}
+          <div className="bg-[#151825] border border-white/10 rounded-xl p-3 sm:p-3.5 space-y-2.5">
             <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-[#2dd4bf]" /> Game Language
+                </div>
+                <div className="text-[10px] text-neutral-400">
+                  Switch HUD &amp; Touch UI between English and Hinglish
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateControlSettings({ language: cs.language === 'hinglish' ? 'en' : 'hinglish' })
+                }
+                className="min-w-[78px] py-1.5 px-3 rounded-lg text-xs font-bold cursor-pointer bg-[#ff5a6e] text-white"
+              >
+                {cs.language === 'hinglish' ? 'Hinglish' : 'English'}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/10">
               <div>
                 <div className="text-xs font-bold text-white">Mobile Touch Controls</div>
                 <div className="text-[10px] text-neutral-400">
@@ -655,8 +676,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     const inSweetSpot = cursor >= 38 && cursor <= 62;
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-amber-400" />
@@ -693,8 +714,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   if (modal === 'robbery') {
     const interior = data.interior as InteriorInfo;
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-rose-400" />
@@ -733,8 +754,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     const interior = data.interior as InteriorInfo;
     const hit = cursor >= 32 && cursor <= 68;
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <VideoOff className="w-5 h-5 text-[#2dd4bf]" />
@@ -768,8 +789,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   if (modal === 'npc') {
     const npc = payload as NpcInteractionContext;
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-display font-bold text-lg text-white">{npc.name}</h3>
@@ -824,15 +845,15 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     const veh = (hud.nearbyTrunkVehicle || hud.drivingVehicle) as VehicleState | null;
     if (!veh) return null;
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-lg w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-display font-bold text-lg text-white">Vehicle Trunk — {veh.name}</h3>
-            <button type="button" onClick={onClose} className="p-1.5 rounded bg-white/10 text-white cursor-pointer">
+            <h3 className="font-display font-bold text-base sm:text-lg text-white truncate">Vehicle Trunk — {veh.name}</h3>
+            <button type="button" onClick={onClose} className="p-1.5 rounded bg-white/10 text-white cursor-pointer shrink-0">
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="bg-[#151825] border border-white/10 rounded-xl p-3 space-y-2 max-h-56 overflow-y-auto vice-scroll">
               <div className="text-xs font-semibold text-neutral-300">On Person ({player.name})</div>
               {player.weapons.length === 0 ? (
@@ -898,8 +919,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
   if (modal === 'wardrobe') {
     const isFenceShop = Boolean(data.isFenceShop);
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-lg w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {isFenceShop ? <Wrench className="w-5 h-5 text-amber-400" /> : <Sparkles className="w-5 h-5 text-[#2dd4bf]" />}
@@ -1008,8 +1029,8 @@ export const MiniGameModal: React.FC<MiniGameModalProps> = ({
     };
 
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 pointer-events-auto">
-        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-6 max-w-md w-full space-y-4">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-2.5 sm:p-4 pointer-events-auto">
+        <div className="bg-[#0e1018] border border-white/15 rounded-2xl p-3.5 sm:p-6 max-w-[94vw] sm:max-w-md w-full max-h-[88dvh] overflow-y-auto vice-scroll space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Trophy className="w-5 h-5 text-amber-400" />
