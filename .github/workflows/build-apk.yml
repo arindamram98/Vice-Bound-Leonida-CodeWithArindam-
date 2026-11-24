@@ -36,7 +36,7 @@ jobs:
           fi
           npx cap sync android
 
-      - name: Apply Custom Icon & Splash
+      - name: Apply Custom Icon & App Name
         run: |
           ICON_FILE=""
           if [ -f "icon.png" ]; then
@@ -52,21 +52,6 @@ jobs:
             cp "$ICON_FILE" assets/splash.png
             npx capacitor-assets generate --android --iconBackgroundColor '#000000' --splashBackgroundColor '#000000'
           fi
-
-      - name: Set App Name & Safe Landscape Orientation
-        run: |
-          python3 -c '
-          import xml.etree.ElementTree as ET
-          manifest_path = "android/app/src/main/AndroidManifest.xml"
-          ET.register_namespace("android", "http://android.com")
-          tree = ET.parse(manifest_path)
-          root = tree.getroot()
-          ns = "{http://android.com}"
-          for activity in root.findall(".//activity"):
-              if activity.attrib.get(ns + "name") == ".MainActivity":
-                  activity.attrib[ns + "screenOrientation"] = "sensorLandscape"
-          tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
-          '
           sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">Vice Bound Leonida<\/string>/' android/app/src/main/res/values/strings.xml
           sed -i 's/<string name="title_activity_main">.*<\/string>/<string name="title_activity_main">Vice Bound Leonida<\/string>/' android/app/src/main/res/values/strings.xml
 
