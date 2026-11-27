@@ -20,6 +20,7 @@ interface BurgerJobModalProps {
   onToggleUniform: () => void;
   onClockIn: () => void;
   onCompleteTask: (task: 'cashier' | 'grill' | 'mop', pay: number) => void;
+  onSetRole: (role: 'kitchen' | 'delivery') => void;
   onLaunchDelivery: () => void;
   onStealRegister: () => void;
   onQuitChaos: () => void;
@@ -41,6 +42,7 @@ export const BurgerJobModal: React.FC<BurgerJobModalProps> = ({
   onToggleUniform,
   onClockIn,
   onCompleteTask,
+  onSetRole,
   onLaunchDelivery,
   onStealRegister,
   onQuitChaos,
@@ -307,88 +309,111 @@ export const BurgerJobModal: React.FC<BurgerJobModalProps> = ({
           </div>
         )}
 
-        {/* 4 Playable Job Stations */}
+        {/* Practical Physical Roles + Station Tasks */}
         {!job.banned && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="space-y-2.5">
             <button
               type="button"
               disabled={!job.clockedIn}
-              onClick={() => {
-                startCashierRound();
-                setCashierRounds(0);
-                setStation('cashier');
-              }}
-              className={`p-3.5 rounded-xl border text-left space-y-1 ${
+              onClick={() => onSetRole('kitchen')}
+              className={`w-full p-3.5 rounded-xl border text-left space-y-1 ${
                 job.clockedIn
-                  ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
+                  ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-400/50 cursor-pointer'
                   : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
               }`}
             >
-              <div className="flex items-center justify-between text-xs font-bold text-white">
-                <span>Cashier POS Station</span>
-                <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 290 : 210}</span>
-              </div>
-              <p className="text-[11px] text-neutral-400">Ring up 3 fast customer orders accurately.</p>
-            </button>
-
-            <button
-              type="button"
-              disabled={!job.clockedIn}
-              onClick={() => {
-                setPattyLayers([]);
-                setStation('grill');
-              }}
-              className={`p-3.5 rounded-xl border text-left space-y-1 ${
-                job.clockedIn
-                  ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
-                  : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-white">
-                <span>Grill &amp; Stack Chef</span>
-                <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 330 : 245} + Meal</span>
-              </div>
-              <p className="text-[11px] text-neutral-400">Cook patties in heat zone &amp; keep a Bleeder Burger (+40 HP).</p>
-            </button>
-
-            <button
-              type="button"
-              disabled={!job.clockedIn}
-              onClick={() => {
-                setSpillsCleaned([false, false, false, false, false, false]);
-                setStation('mop');
-              }}
-              className={`p-3.5 rounded-xl border text-left space-y-1 ${
-                job.clockedIn
-                  ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
-                  : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-white">
-                <span>Mop &amp; Floor Cleanup</span>
-                <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 250 : 185}</span>
-              </div>
-              <p className="text-[11px] text-neutral-400">Scrub 6 dining floor soda &amp; grease spills.</p>
-            </button>
-
-            <button
-              type="button"
-              disabled={!job.clockedIn}
-              onClick={onLaunchDelivery}
-              className={`p-3.5 rounded-xl border text-left space-y-1 ${
-                job.clockedIn
-                  ? 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-400/45 cursor-pointer'
-                  : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-orange-200">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-200">
                 <span className="flex items-center gap-1.5">
-                  <Bike className="w-3.5 h-3.5 text-orange-400" /> Scooter Delivery Run
+                  <Flame className="w-4 h-4 text-orange-400" /> Physical Kitchen Shift (In-Store Stations)
                 </span>
-                <span className="text-emerald-400 font-mono-num">+$320</span>
+                <span className="text-emerald-400 font-mono-num">+$15–$35 / Order</span>
               </div>
-              <p className="text-[11px] text-neutral-300">Spawns a Burger Shot Faggio Scooter outside for a 75s delivery!</p>
+              <p className="text-[11px] text-neutral-300">
+                Walk physically to the Flat-Top Grill → Assembly Table → Customer Pickup Counter inside Burger Shot!
+              </p>
             </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                disabled={!job.clockedIn}
+                onClick={() => {
+                  startCashierRound();
+                  setCashierRounds(0);
+                  setStation('cashier');
+                }}
+                className={`p-3.5 rounded-xl border text-left space-y-1 ${
+                  job.clockedIn
+                    ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
+                    : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-white">
+                  <span>Cashier POS Station</span>
+                  <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 290 : 210}</span>
+                </div>
+                <p className="text-[11px] text-neutral-400">Ring up 3 fast customer orders accurately.</p>
+              </button>
+
+              <button
+                type="button"
+                disabled={!job.clockedIn}
+                onClick={() => {
+                  setPattyLayers([]);
+                  setStation('grill');
+                }}
+                className={`p-3.5 rounded-xl border text-left space-y-1 ${
+                  job.clockedIn
+                    ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
+                    : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-white">
+                  <span>Grill &amp; Stack Chef</span>
+                  <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 330 : 245} + Meal</span>
+                </div>
+                <p className="text-[11px] text-neutral-400">Cook patties in heat zone &amp; keep a Bleeder Burger (+40 HP).</p>
+              </button>
+
+              <button
+                type="button"
+                disabled={!job.clockedIn}
+                onClick={() => {
+                  setSpillsCleaned([false, false, false, false, false, false]);
+                  setStation('mop');
+                }}
+                className={`p-3.5 rounded-xl border text-left space-y-1 ${
+                  job.clockedIn
+                    ? 'bg-[#151825] hover:bg-white/10 border-white/15 cursor-pointer'
+                    : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-white">
+                  <span>Mop &amp; Floor Cleanup</span>
+                  <span className="text-emerald-400 font-mono-num">+${job.isShiftManager ? 250 : 185}</span>
+                </div>
+                <p className="text-[11px] text-neutral-400">Scrub 6 dining floor soda &amp; grease spills.</p>
+              </button>
+
+              <button
+                type="button"
+                disabled={!job.clockedIn}
+                onClick={onLaunchDelivery}
+                className={`p-3.5 rounded-xl border text-left space-y-1 ${
+                  job.clockedIn
+                    ? 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-400/45 cursor-pointer'
+                    : 'bg-[#12141e] border-white/5 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-orange-200">
+                  <span className="flex items-center gap-1.5">
+                    <Bike className="w-3.5 h-3.5 text-orange-400" /> Timed Scooty Delivery
+                  </span>
+                  <span className="text-emerald-400 font-mono-num">+$40–$80</span>
+                </div>
+                <p className="text-[11px] text-neutral-300">Grab food box, hop on the parked Scooty outside &amp; beat the GPS timer!</p>
+              </button>
+            </div>
           </div>
         )}
 

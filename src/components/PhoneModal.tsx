@@ -53,6 +53,8 @@ interface PhoneModalProps {
   onUseTraumaKit: () => void;
   onUsePainkiller: () => void;
   onEatBurger: () => void;
+  onBookTaxi: (x: number, z: number, label: string) => void;
+  onCancelTaxi: () => void;
 }
 
 type PhoneTab = 'messages' | 'bank' | 'stocks' | 'darkweb' | 'jobs' | 'social' | 'duo' | 'gps';
@@ -83,6 +85,8 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   onUseTraumaKit,
   onUsePainkiller,
   onEatBurger,
+  onBookTaxi,
+  onCancelTaxi,
 }) => {
   const [tab, setTab] = useState<PhoneTab>('messages');
   const [customMsg, setCustomMsg] = useState('');
@@ -415,7 +419,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onSetWaypoint(70, 210, 'Burger Shot Diner')}
+                  onClick={() => onSetWaypoint(350, 1050, 'Burger Shot Diner')}
                   className="px-2.5 py-1 rounded bg-orange-400 text-neutral-950 text-[11px] font-bold cursor-pointer shrink-0"
                 >
                   GPS
@@ -591,35 +595,74 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
                 onClick={onOpenMap}
                 className="w-full py-2.5 rounded-xl bg-[#2dd4bf] hover:bg-[#14b8a6] text-neutral-950 font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Compass className="w-4 h-4" /> Open Full 5-City Interactive Map{showHints ? ' [M]' : ''}
+                <Compass className="w-4 h-4" /> Open Full 5x Interactive Map{showHints ? ' [M]' : ''}
               </button>
-              {[
-                { name: "Jason's Villa (Home & Gym)", x: 210, z: 210 },
-                { name: 'Burger Shot Diner (Work / Food)', x: 70, z: 210 },
-                { name: 'Leonida Reserve Bank (ATM & Safe)', x: 210, z: 350 },
-                { name: 'Central Park & Playground', x: -70, z: 350 },
-                { name: 'Vice Roast Coffee Shop', x: 210, z: 105 },
-                { name: 'Neon Anchor Beer Bar', x: -210, z: 210 },
-                { name: 'Vice Armory Gun Shop', x: 70, z: 105 },
-                { name: 'Vice Threads Boutique (Clothes)', x: -70, z: 105 },
-                { name: 'Vice PD Central Precinct', x: -70, z: 210 },
-                { name: 'Grand Leonida Highway Bridge', x: 0, z: 0 },
-                { name: 'Northport Tactical Armory', x: -70, z: -210 },
-                { name: 'Leonida Intl Airport (Planes/Heli)', x: -460, z: -380 },
-                { name: 'Port Vice Marina (Boats)', x: 320, z: 350 },
-                { name: 'Paradise Key Bungalow Island', x: 560, z: 230 },
-              ].map((lm) => (
-                <div key={lm.name} className="bg-[#151928] border border-white/10 rounded-lg p-2 flex items-center justify-between text-[11px]">
-                  <span className="text-white flex items-center gap-1.5 truncate">
-                    <MapPin className="w-3 h-3 text-[#ff5a6e] shrink-0" /> {lm.name}
+
+              {hud.taxiRide.status !== 'idle' ? (
+                <div className="bg-amber-500/15 border border-amber-400/45 rounded-xl p-2.5 flex items-center justify-between gap-2 text-[11px]">
+                  <span className="text-amber-200 font-semibold truncate">
+                    Cab: {hud.taxiRide.destLabel} ({hud.taxiRide.status.replace(/_/g, ' ')})
                   </span>
                   <button
                     type="button"
-                    onClick={() => onSetWaypoint(lm.x, lm.z, lm.name)}
-                    className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
+                    onClick={onCancelTaxi}
+                    className="px-2 py-1 rounded bg-rose-500/25 text-rose-200 font-bold cursor-pointer shrink-0"
                   >
-                    GPS
+                    Cancel
                   </button>
+                </div>
+              ) : hud.waypoint ? (
+                <button
+                  type="button"
+                  onClick={() => onBookTaxi(hud.waypoint!.x, hud.waypoint!.z, hud.waypoint!.label)}
+                  className="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Car className="w-4 h-4" /> Call Smart Taxi to GPS Pin
+                </button>
+              ) : null}
+
+              {[
+                { name: "Jason's Villa (Home & Gym)", x: 1050, z: 1050, taxi: true },
+                { name: 'Burger Shot Diner (Work / Food)', x: 350, z: 1050, taxi: true },
+                { name: 'Vice Downtown Taxi Stand', x: 110, z: 1225, taxi: true },
+                { name: 'Leonida Reserve Bank (ATM & Safe)', x: 1050, z: 1750, taxi: true },
+                { name: 'Central Park & Playground', x: 350, z: 1750, taxi: true },
+                { name: 'Vice Roast Coffee Shop', x: 1050, z: 525, taxi: true },
+                { name: 'Neon Anchor Beer Bar', x: -1050, z: 1050, taxi: true },
+                { name: 'Vice Armory Gun Shop', x: 350, z: 525, taxi: true },
+                { name: 'Vice Threads Boutique (Clothes)', x: -350, z: 525, taxi: true },
+                { name: 'Vice PD Central Precinct', x: -350, z: 1050, taxi: true },
+                { name: 'Grand Leonida Highway Bridge', x: 0, z: 0, taxi: true },
+                { name: 'Northport Tactical Armory', x: -350, z: -1050, taxi: true },
+                { name: 'Vice Exotic Motors & Mod Shop', x: 350, z: -1050, taxi: true },
+                { name: 'South Vice Intl Airport (Charter)', x: -1850, z: 1365, taxi: true },
+                { name: 'Northport Intl Airport (Charter)', x: -1850, z: -1365, taxi: true },
+                { name: 'Port Vice Marina (Boats)', x: 1620, z: 1750, taxi: true },
+                { name: 'Paradise Key Bungalow Island', x: 2650, z: 1060, taxi: false },
+                { name: 'Starlight Atoll Estate Island', x: 2650, z: -1060, taxi: false },
+              ].map((lm) => (
+                <div key={lm.name} className="bg-[#151928] border border-white/10 rounded-lg p-2 flex items-center justify-between gap-1.5 text-[11px]">
+                  <span className="text-white flex items-center gap-1.5 truncate">
+                    <MapPin className="w-3 h-3 text-[#ff5a6e] shrink-0" /> {lm.name}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onSetWaypoint(lm.x, lm.z, lm.name)}
+                      className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                    >
+                      GPS
+                    </button>
+                    {lm.taxi && (
+                      <button
+                        type="button"
+                        onClick={() => onBookTaxi(lm.x, lm.z, lm.name)}
+                        className="px-2 py-1 rounded bg-amber-400/90 hover:bg-amber-300 text-neutral-950 font-bold cursor-pointer"
+                      >
+                        Taxi
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               {activities.slice(0, 3).map((act) => (

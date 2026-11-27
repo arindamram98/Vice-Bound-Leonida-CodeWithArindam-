@@ -272,10 +272,12 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
                 <button
                   type="button"
                   onClick={onContextInteract}
-                  className="min-w-[54px] min-h-[54px] px-3.5 rounded-full bg-amber-400 border-2 border-white text-neutral-950 font-extrabold text-[11px] flex flex-col items-center justify-center active:scale-95 shadow-lg"
+                  className="min-w-[54px] min-h-[54px] px-3.5 rounded-full bg-amber-400 border-2 border-white text-neutral-950 font-extrabold text-[11px] flex flex-col items-center justify-center active:scale-95 shadow-lg max-w-[130px]"
                 >
-                  <Hand className="w-4 h-4" />
-                  <span>{t(lang, 'interact').split(' ')[0].toUpperCase()}</span>
+                  <Hand className="w-4 h-4 shrink-0" />
+                  <span className="truncate max-w-full">
+                    {(hud.contextAction || t(lang, 'interact').split(' ')[0]).toUpperCase()}
+                  </span>
                 </button>
               )}
 

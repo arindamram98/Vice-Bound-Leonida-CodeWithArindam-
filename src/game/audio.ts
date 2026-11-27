@@ -540,6 +540,33 @@ class ViceAudioEngine {
   }
 
   private lastSpeechTime = 0;
+  private npcPanicCooldown = new Map<string, number>();
+
+  public playPanicScreamOnce(npcId: string, highPitch = false) {
+    if (this.muted) return;
+    const nowMs = performance.now();
+    const lastMs = this.npcPanicCooldown.get(npcId) ?? -999999;
+    if (nowMs - lastMs < 16000) return;
+    this.npcPanicCooldown.set(npcId, nowMs);
+
+    if (this.ctx && this.masterGain) {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const baseF = highPitch ? 640 : 480;
+      osc.frequency.setValueAtTime(baseF, now);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 1.38, now + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 0.72, now + 0.24);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    }
+  }
 
   public speakNpcLine(text: string, pitch = 1.0, rate = 1.05) {
     if (this.muted) return;

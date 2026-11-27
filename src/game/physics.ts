@@ -151,7 +151,7 @@ export function computeBoatBuoyancyPose(
   const waveRoll = Math.atan2(hPort - hStarboard, 2.2);
 
   return {
-    y: hCenter + 0.08 + Math.min(0.12, Math.abs(speed) * 0.003),
+    y: -0.35 + hCenter + 0.08 + Math.min(0.12, Math.abs(speed) * 0.003),
     pitch: wavePitch + planingBowLift,
     roll: waveRoll,
   };

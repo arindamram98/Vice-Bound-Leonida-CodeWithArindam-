@@ -12,8 +12,8 @@ import {
 } from './types';
 import { getWaterShoreDistance } from './water';
 
-export const LAND_Y = 0.4;
-export const ROAD_Y = 0.43;
+export const LAND_Y = 0.0;
+export const ROAD_Y = 0.08;
 
 export interface BuildingFootprint {
   id: string;
@@ -396,6 +396,23 @@ export const ROAD_SEGMENTS: RoadSegmentDef[] = [
     isHighway: false,
     island: 'airport' as const,
   },
+  // Neighborhood Secondary Avenues & Beachfront Boulevard (preserves every hero building, park, stall & gas station)
+  { id: 's_sec_552', x1: -1400, z1: 552, x2: 1680, z2: 552, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_sec_1090', x1: -1400, z1: 1090, x2: 1680, z2: 1090, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_sec_1782_w', x1: -1400, z1: 1782, x2: 250, z2: 1782, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_sec_1782_e', x1: 450, z1: 1782, x2: 1680, z2: 1782, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_sec_2430', x1: -1400, z1: 2430, x2: 1680, z2: 2430, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_ns_sec_w525', x1: -525, z1: 440, x2: -525, z2: 2580, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_ns_sec_175', x1: 175, z1: 440, x2: 175, z2: 2580, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_ns_sec_525', x1: 525, z1: 440, x2: 525, z2: 2580, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_ns_sec_1225', x1: 1225, z1: 440, x2: 1225, z2: 2580, width: 14, isHighway: false, island: 'south' as const },
+  { id: 's_ns_ocean_dr', x1: 1660, z1: 450, x2: 1660, z2: 2550, width: 16, isHighway: false, island: 'south' as const },
+  { id: 'n_sec_555', x1: -1400, z1: -555, x2: 1620, z2: -555, width: 14, isHighway: false, island: 'north' as const },
+  { id: 'n_sec_1082', x1: -1400, z1: -1082, x2: 1620, z2: -1082, width: 14, isHighway: false, island: 'north' as const },
+  { id: 'n_sec_1782', x1: -1400, z1: -1782, x2: 1620, z2: -1782, width: 14, isHighway: false, island: 'north' as const },
+  { id: 'n_ns_sec_w525', x1: -525, z1: -2580, x2: -525, z2: -440, width: 14, isHighway: false, island: 'north' as const },
+  { id: 'n_ns_sec_525', x1: 525, z1: -2580, x2: 525, z2: -440, width: 14, isHighway: false, island: 'north' as const },
+  { id: 'n_ns_sec_1225', x1: 1225, z1: -2580, x2: 1225, z2: -440, width: 14, isHighway: false, island: 'north' as const },
 ];
 
 // Grand Over-Water Main Highway Bridge connecting Vice Downtown & Northport across the wide 5x Ocean Channel
@@ -414,10 +431,10 @@ export const BRIDGES: BridgeDef[] = [
 
 // Boat Docks over Water (5x coordinates matching coastlines & islands)
 export const WOODEN_DOCKS: DockDef[] = [
-  { id: 'dock_marina', name: 'Port Vice Marina Dock', xMin: 1785, xMax: 1855, zMin: 1735, zMax: 1765, deckY: 0.7 },
-  { id: 'dock_northport', name: 'Northport Harbor Dock', xMin: 310, xMax: 345, zMin: -430, zMax: -360, deckY: 0.7 },
-  { id: 'dock_paradise', name: 'Paradise Key Island Dock', xMin: 2380, xMax: 2450, zMin: 1085, zMax: 1115, deckY: 0.7 },
-  { id: 'dock_starlight', name: 'Starlight Atoll Dock', xMin: 2380, xMax: 2450, zMin: -1115, zMax: -1085, deckY: 0.7 },
+  { id: 'dock_marina', name: 'Port Vice Marina Dock', xMin: 1785, xMax: 1855, zMin: 1735, zMax: 1765, deckY: 0.28 },
+  { id: 'dock_northport', name: 'Northport Harbor Dock', xMin: 310, xMax: 345, zMin: -430, zMax: -360, deckY: 0.28 },
+  { id: 'dock_paradise', name: 'Paradise Key Island Dock', xMin: 2380, xMax: 2450, zMin: 1085, zMax: 1115, deckY: 0.28 },
+  { id: 'dock_starlight', name: 'Starlight Atoll Dock', xMin: 2380, xMax: 2450, zMin: -1115, zMax: -1085, deckY: 0.28 },
 ];
 
 export function isOnWoodenDock(x: number, z: number): DockDef | null {
@@ -1394,15 +1411,22 @@ export function generateViceCityWorld(): {
             [140, -40],
           ]
         : [
-            [-210, -140],
-            [0, -140],
-            [210, -140],
-            [-210, 0],
-            [0, 0],
-            [210, 0],
-            [-210, 140],
-            [0, 140],
-            [210, 140],
+            [-240, -210],
+            [-95, -210],
+            [95, -210],
+            [240, -210],
+            [-240, -75],
+            [-95, -75],
+            [95, -75],
+            [240, -75],
+            [-240, 75],
+            [-95, 75],
+            [95, 75],
+            [240, 75],
+            [-240, 210],
+            [-95, 210],
+            [95, 210],
+            [240, 210],
           ];
 
       for (const [ox, oz] of offsets) {
@@ -1563,16 +1587,27 @@ export function generateViceCityWorld(): {
     }
   }
 
-  // Major Boulevard Oaks & Palms
-  for (const rx of [-700, 0, 700]) {
-    for (let z = 780; z <= 2500; z += 180) {
-      if (SOUTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 40)) continue;
-      tryPushTree(rx + 20, z, rx === 0 ? 'palm' : 'oak', 1.0);
-      tryPushTree(rx - 20, z, rx === 0 ? 'palm' : 'oak', 1.0);
+  // Major Boulevard & Neighborhood Street Palms / Oaks (close to player & skyline!)
+  for (const rx of [-700, -525, 0, 175, 525, 700, 1225, 1660]) {
+    const isPalmBlvd = rx === 0 || rx === 1660 || rx === 1225 || rx === 525;
+    for (let z = 480; z <= 2520; z += 90) {
+      if (SOUTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 32)) continue;
+      if (Math.abs(z - 1090) < 24 || Math.abs(z - 552) < 24 || Math.abs(z - 1782) < 24) continue;
+      tryPushTree(rx + 17, z, isPalmBlvd ? 'palm' : 'oak', 1.05);
+      tryPushTree(rx - 17, z, isPalmBlvd ? 'palm' : 'oak', 1.05);
     }
-    for (let z = -2380; z <= -780; z += 190) {
-      if (NORTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 40)) continue;
-      tryPushTree(rx + 20, z, 'pine', 1.02);
+    for (let z = -2380; z <= -480; z += 110) {
+      if (NORTH_ROAD_Z.some((rz) => Math.abs(z - rz) < 32)) continue;
+      if (Math.abs(z + 1082) < 24 || Math.abs(z + 555) < 24 || Math.abs(z + 1782) < 24) continue;
+      tryPushTree(rx + 17, z, rx === 0 ? 'palm' : 'pine', 1.02);
+    }
+  }
+  for (const rz of [552, 700, 1090, 1400, 1782, 2100]) {
+    for (let x = -1320; x <= 1560; x += 115) {
+      if (Math.abs(x - 350) < 95 && Math.abs(rz - 1782) < 40) continue;
+      if (Math.abs(x - 1050) < 35 && Math.abs(rz - 1090) < 35) continue; // keep Jason's Villa driveway wide open
+      if (Math.abs(x - 350) < 35 && Math.abs(rz - 1090) < 35) continue;
+      tryPushTree(x, rz + 15.5, rz === 1090 || rz === 1400 ? 'palm' : 'oak', 1.0);
     }
   }
 
@@ -1632,6 +1667,12 @@ export function generateViceCityWorld(): {
     [-1180, -1376, Math.PI],
     [-1720, 1370, Math.PI / 2],
     [-1720, -1370, Math.PI / 2],
+    [980, 1072, 0],
+    [420, 1072, 0],
+    [1202, 920, -Math.PI / 2],
+    [198, 920, Math.PI / 2],
+    [722, 1068, Math.PI / 2],
+    [1640, 1180, -Math.PI / 2],
   ];
   billboardCoords.forEach(([x, z, yaw], i) => {
     if (!buildings.some((b) => Math.abs(b.x - x) < b.w / 2 + 6 && Math.abs(b.z - z) < b.d / 2 + 6)) {

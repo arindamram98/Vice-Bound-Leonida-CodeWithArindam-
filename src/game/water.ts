@@ -124,7 +124,7 @@ export function getWaterWaveHeight(x: number, z: number, timeSec: number, stormF
   const sy2 = z * 0.125 - timeSec * 0.38;
   const simplexWaves = simplex2D(sx1, sy1) * 0.12 + simplex2D(sx2, sy2) * 0.055;
 
-  return Math.min(0.32, (swell + simplexWaves) * ampScale);
+  return Math.max(-0.15, Math.min(0.15, (swell + simplexWaves) * ampScale));
 }
 
 const GLSL_SIMPLEX_2D = `
@@ -190,9 +190,9 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
       uSunDir: { value: new THREE.Vector3(0.6, 0.5, -0.3).normalize() },
       uSkyTop: { value: new THREE.Color(0x154794) },
       uSkyHorizon: { value: new THREE.Color(0x7cb8e8) },
-      uShallowColor: { value: new THREE.Color(0x0c8f88) },
-      uMidColor: { value: new THREE.Color(0x065572) },
-      uDeepColor: { value: new THREE.Color(0x032033) },
+      uShallowColor: { value: new THREE.Color(0x10a5a8) },
+      uMidColor: { value: new THREE.Color(0x07688a) },
+      uDeepColor: { value: new THREE.Color(0x03263d) },
       uStorm: { value: 0.0 },
     },
     vertexShader: `
@@ -230,7 +230,7 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
 
         float sn1 = snoise(xz * 0.055 + vec2(-uTime * 0.32, uTime * 0.21)) * 0.12;
         float sn2 = snoise(xz * 0.125 + vec2(uTime * 0.44, -uTime * 0.38)) * 0.055;
-        return min(0.32, (swell + sn1 + sn2) * ampScale);
+        return clamp((swell + sn1 + sn2) * ampScale, -0.15, 0.15);
       }
 
       void main() {
@@ -382,7 +382,7 @@ export function createAnimatedOceanWater(waterNormalTex: THREE.Texture): OceanWa
   });
 
   const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(150, 0.0, 0);
+  mesh.position.set(150, -0.35, 0);
 
   return {
     mesh,

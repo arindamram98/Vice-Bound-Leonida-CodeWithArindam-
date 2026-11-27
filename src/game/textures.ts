@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 export interface ProceduralTextureSet {
   asphalt: THREE.CanvasTexture;
+  intersectionAsphalt: THREE.CanvasTexture;
   asphaltNormal: THREE.CanvasTexture;
   asphaltRoughness: THREE.CanvasTexture;
   highway: THREE.CanvasTexture;
@@ -119,23 +120,41 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     asphCtx.stroke();
   }
 
-  asphCtx.fillStyle = '#d9a416';
-  asphCtx.fillRect(247, 0, 5, 512);
-  asphCtx.fillRect(260, 0, 5, 512);
-  asphCtx.fillStyle = 'rgba(235,238,242,0.72)';
+  asphCtx.fillStyle = '#eab308';
+  asphCtx.fillRect(246, 0, 6, 512);
+  asphCtx.fillRect(260, 0, 6, 512);
+  asphCtx.fillStyle = 'rgba(248,250,252,0.88)';
   for (let y = 16; y < 512; y += 64) {
-    asphCtx.fillRect(130, y, 5, 32);
-    asphCtx.fillRect(377, y, 5, 32);
+    asphCtx.fillRect(128, y, 6, 34);
+    asphCtx.fillRect(378, y, 6, 34);
   }
-  asphCtx.fillStyle = 'rgba(226,232,240,0.52)';
-  asphCtx.fillRect(14, 0, 6, 512);
-  asphCtx.fillRect(492, 0, 6, 512);
+  asphCtx.fillStyle = 'rgba(241,245,249,0.75)';
+  asphCtx.fillRect(12, 0, 7, 512);
+  asphCtx.fillRect(493, 0, 7, 512);
   const asphalt = new THREE.CanvasTexture(asphC);
   asphalt.wrapS = THREE.RepeatWrapping;
   asphalt.wrapT = THREE.RepeatWrapping;
-  asphalt.repeat.set(1, 36);
+  asphalt.repeat.set(1, 1);
   asphalt.colorSpace = THREE.SRGBColorSpace;
   asphalt.anisotropy = maxAnisotropy;
+
+  // Clean Intersection Asphalt Box (no longitudinal stripes cutting across junctions)
+  const [intAsphC, intAsphCtx] = makeCanvas(256, 256);
+  intAsphCtx.fillStyle = '#1b1f26';
+  intAsphCtx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 6000; i++) {
+    const v = 20 + Math.floor(Math.random() * 24);
+    intAsphCtx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+    intAsphCtx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  intAsphCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+  intAsphCtx.lineWidth = 4;
+  intAsphCtx.strokeRect(4, 4, 248, 248);
+  const intersectionAsphalt = new THREE.CanvasTexture(intAsphC);
+  intersectionAsphalt.wrapS = THREE.RepeatWrapping;
+  intersectionAsphalt.wrapT = THREE.RepeatWrapping;
+  intersectionAsphalt.colorSpace = THREE.SRGBColorSpace;
+  intersectionAsphalt.anisotropy = maxAnisotropy;
 
   // Linear Asphalt Normal & Roughness maps (aggregate micro-grain + puddle patches)
   const asphaltNormal = buildNormalMap(128, 4, 144, maxAnisotropy, 1.8, (x, y) => {
@@ -189,7 +208,7 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const highway = new THREE.CanvasTexture(hwC);
   highway.wrapS = THREE.RepeatWrapping;
   highway.wrapT = THREE.RepeatWrapping;
-  highway.repeat.set(1, 48);
+  highway.repeat.set(1, 1);
   highway.colorSpace = THREE.SRGBColorSpace;
   highway.anisotropy = maxAnisotropy;
 
@@ -218,21 +237,29 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   runway.colorSpace = THREE.SRGBColorSpace;
   runway.anisotropy = maxAnisotropy;
 
-  // 4. Weathered Granite Sidewalk Pavers
+  // 4. Crisp Concrete Sidewalk Pavers & Expansion Joints
   const [swC, swCtx] = makeCanvas(512, 512);
-  swCtx.fillStyle = '#9e978b';
+  swCtx.fillStyle = '#c5bfb3';
   swCtx.fillRect(0, 0, 512, 512);
-  for (let r = 0; r < 16; r++) {
-    for (let c = 0; c < 8; c++) {
-      const shade = 152 + ((r * 7 + c * 13) % 24);
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 4; c++) {
+      const shade = 188 + ((r * 7 + c * 13) % 20);
       swCtx.fillStyle = `rgb(${shade}, ${shade - 4}, ${shade - 10})`;
-      swCtx.fillRect(c * 64 + (r % 2) * 32 + 2, r * 32 + 2, 60, 28);
+      swCtx.fillRect(c * 128 + (r % 2) * 64 + 3, r * 64 + 3, 122, 58);
     }
+  }
+  swCtx.strokeStyle = 'rgba(70,66,60,0.42)';
+  swCtx.lineWidth = 3;
+  for (let r = 0; r <= 8; r++) {
+    swCtx.beginPath();
+    swCtx.moveTo(0, r * 64);
+    swCtx.lineTo(512, r * 64);
+    swCtx.stroke();
   }
   const sidewalk = new THREE.CanvasTexture(swC);
   sidewalk.wrapS = THREE.RepeatWrapping;
   sidewalk.wrapT = THREE.RepeatWrapping;
-  sidewalk.repeat.set(55, 55);
+  sidewalk.repeat.set(1, 1);
   sidewalk.colorSpace = THREE.SRGBColorSpace;
   sidewalk.anisotropy = maxAnisotropy;
 
@@ -393,33 +420,33 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     return plankEdge + grain;
   });
 
-  // 11. Warm Coastal Sand
+  // 11. Warm Golden Coastal Sand
   const [sandC, sandCtx] = makeCanvas(512, 512);
-  sandCtx.fillStyle = '#d3be8e';
+  sandCtx.fillStyle = '#e5cf95';
   sandCtx.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 11000; i++) {
-    sandCtx.fillStyle = Math.random() > 0.5 ? 'rgba(245,232,198,0.28)' : 'rgba(148,120,76,0.28)';
+  for (let i = 0; i < 14000; i++) {
+    sandCtx.fillStyle = Math.random() > 0.45 ? 'rgba(255,244,214,0.34)' : 'rgba(176,142,84,0.28)';
     sandCtx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
   }
   const sand = new THREE.CanvasTexture(sandC);
   sand.wrapS = THREE.RepeatWrapping;
   sand.wrapT = THREE.RepeatWrapping;
-  sand.repeat.set(24, 65);
+  sand.repeat.set(1, 1);
   sand.colorSpace = THREE.SRGBColorSpace;
   sand.anisotropy = maxAnisotropy;
 
-  // 12. Natural Tropical Grass & Wetlands Turf
+  // 12. Lush Tropical Turf & Lawn Grass
   const [grassC, grassCtx] = makeCanvas(512, 512);
-  grassCtx.fillStyle = '#2f6133';
+  grassCtx.fillStyle = '#316e35';
   grassCtx.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 14000; i++) {
-    grassCtx.fillStyle = Math.random() > 0.5 ? '#3e773e' : '#234c27';
+  for (let i = 0; i < 18000; i++) {
+    grassCtx.fillStyle = Math.random() > 0.5 ? '#438b43' : '#245728';
     grassCtx.fillRect(Math.random() * 512, Math.random() * 512, 2, 5);
   }
   const grass = new THREE.CanvasTexture(grassC);
   grass.wrapS = THREE.RepeatWrapping;
   grass.wrapT = THREE.RepeatWrapping;
-  grass.repeat.set(32, 32);
+  grass.repeat.set(1, 1);
   grass.colorSpace = THREE.SRGBColorSpace;
   grass.anisotropy = maxAnisotropy;
 
@@ -538,6 +565,7 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
 
   return {
     asphalt,
+    intersectionAsphalt,
     asphaltNormal,
     asphaltRoughness,
     highway,
@@ -561,4 +589,36 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     billboardAds,
     crosswalk,
   };
+}
+
+export function createStorefrontSignTexture(
+  title: string,
+  subtitle: string,
+  bgColor: string,
+  accentColor: string
+): THREE.CanvasTexture {
+  const [c, ctx] = makeCanvas(512, 144);
+  const grad = ctx.createLinearGradient(0, 0, 512, 144);
+  grad.addColorStop(0, bgColor);
+  grad.addColorStop(1, '#090d16');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 144);
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 500, 132);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 44px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title.toUpperCase(), 256, 56);
+
+  ctx.fillStyle = accentColor;
+  ctx.font = 'bold 21px sans-serif';
+  ctx.fillText(subtitle.toUpperCase(), 256, 106);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }

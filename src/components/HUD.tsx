@@ -17,7 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  AIRPORT_ZONE,
+  AIRPORT_ZONES,
   BRIDGES,
   CENTRAL_PARK,
   NORTH_ISLAND,
@@ -44,6 +44,13 @@ interface HUDProps {
   onToggleSlowMo: () => void;
   onCycleWeapon: (dir: 1 | -1) => void;
   onRespawn: () => void;
+  onCollectRobberyBag: () => void;
+  onContextAction: () => void;
+  onPayTaxiUpi: () => void;
+  onSkipTaxiFare: () => void;
+  onCancelTaxi: () => void;
+  onEatBurgerShop: () => void;
+  onInvitePartnerSit: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -60,6 +67,13 @@ export const HUD: React.FC<HUDProps> = ({
   onToggleSlowMo,
   onCycleWeapon,
   onRespawn,
+  onCollectRobberyBag,
+  onContextAction,
+  onPayTaxiUpi,
+  onSkipTaxiFare,
+  onCancelTaxi,
+  onEatBurgerShop,
+  onInvitePartnerSit,
 }) => {
   const minimapRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -85,7 +99,7 @@ export const HUD: React.FC<HUDProps> = ({
 
     const size = miniSize;
     const half = size / 2;
-    const scale = touchMode ? 0.36 : 0.44;
+    const scale = touchMode ? 0.095 : 0.125;
 
     const toMini = (wx: number, wz: number) => ({
       mx: half + (wx - player.x) * scale,
@@ -100,21 +114,23 @@ export const HUD: React.FC<HUDProps> = ({
     ctx.fillStyle = '#192030';
     ctx.fillRect(sTL.mx, sTL.my, SOUTH_ISLAND.hx * 2 * scale, SOUTH_ISLAND.hz * 2 * scale);
 
-    const beachTL = toMini(338, SOUTH_ISLAND.cz - SOUTH_ISLAND.hz + 2);
+    const beachTL = toMini(1650, SOUTH_ISLAND.cz - SOUTH_ISLAND.hz + 10);
     ctx.fillStyle = '#8b7752';
-    ctx.fillRect(beachTL.mx, beachTL.my, 34 * scale, (SOUTH_ISLAND.hz * 2 - 4) * scale);
+    ctx.fillRect(beachTL.mx, beachTL.my, 150 * scale, (SOUTH_ISLAND.hz * 2 - 20) * scale);
 
     const nTL = toMini(NORTH_ISLAND.cx - NORTH_ISLAND.hx, NORTH_ISLAND.cz - NORTH_ISLAND.hz);
     ctx.fillStyle = '#182230';
     ctx.fillRect(nTL.mx, nTL.my, NORTH_ISLAND.hx * 2 * scale, NORTH_ISLAND.hz * 2 * scale);
 
-    const woodsTL = toMini(NORTH_ISLAND.cx - NORTH_ISLAND.hx + 3, -540);
+    const woodsTL = toMini(NORTH_ISLAND.cx - NORTH_ISLAND.hx + 15, -2690);
     ctx.fillStyle = '#1c422c';
-    ctx.fillRect(woodsTL.mx, woodsTL.my, (NORTH_ISLAND.hx * 2 - 6) * scale, 108 * scale);
+    ctx.fillRect(woodsTL.mx, woodsTL.my, (NORTH_ISLAND.hx * 2 - 30) * scale, 520 * scale);
 
-    const airTL = toMini(-560, -520);
-    ctx.fillStyle = '#202938';
-    ctx.fillRect(airTL.mx, airTL.my, 240 * scale, 270 * scale);
+    for (const az of AIRPORT_ZONES) {
+      const airTL = toMini(az.cx - az.hx, az.cz - az.hz);
+      ctx.fillStyle = '#202938';
+      ctx.fillRect(airTL.mx, airTL.my, az.hx * 2 * scale, az.hz * 2 * scale);
+    }
 
     for (const isl of SAFEHOUSE_ISLANDS) {
       const c = toMini(isl.cx, isl.cz);
@@ -124,7 +140,7 @@ export const HUD: React.FC<HUDProps> = ({
       ctx.fill();
       ctx.fillStyle = '#245d38';
       ctx.beginPath();
-      ctx.arc(c.mx, c.my, (isl.halfSize - 18) * scale, 0, Math.PI * 2);
+      ctx.arc(c.mx, c.my, Math.max(2, (isl.halfSize - 42) * scale), 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -132,18 +148,17 @@ export const HUD: React.FC<HUDProps> = ({
     ctx.fillStyle = '#256b3b';
     ctx.fillRect(parkTL.mx, parkTL.my, CENTRAL_PARK.w * scale, CENTRAL_PARK.d * scale);
 
-    const rwTL = toMini(
-      AIRPORT_ZONE.runwayX - AIRPORT_ZONE.runwayLen / 2,
-      AIRPORT_ZONE.runwayZ - AIRPORT_ZONE.runwayW / 2
-    );
-    ctx.fillStyle = '#3b485e';
-    ctx.fillRect(rwTL.mx, rwTL.my, AIRPORT_ZONE.runwayLen * scale, AIRPORT_ZONE.runwayW * scale);
+    for (const az of AIRPORT_ZONES) {
+      const rwTL = toMini(az.runwayX - az.runwayLen / 2, az.runwayZ - az.runwayW / 2);
+      ctx.fillStyle = '#3b485e';
+      ctx.fillRect(rwTL.mx, rwTL.my, az.runwayLen * scale, az.runwayW * scale);
+    }
 
     for (const seg of ROAD_SEGMENTS) {
       const p1 = toMini(seg.x1, seg.z1);
       const p2 = toMini(seg.x2, seg.z2);
       ctx.strokeStyle = seg.isHighway ? '#4f5f7d' : '#2f3a52';
-      ctx.lineWidth = Math.max(2, seg.width * scale * 0.72);
+      ctx.lineWidth = Math.max(1.8, seg.width * scale * 0.72);
       ctx.beginPath();
       ctx.moveTo(p1.mx, p1.my);
       ctx.lineTo(p2.mx, p2.my);
@@ -219,6 +234,12 @@ export const HUD: React.FC<HUDProps> = ({
         drawBadge(ex, ey, '#a855f7', 'B');
       } else if (ent.kind === 'gunshop') {
         drawBadge(ex, ey, '#f97316', 'G');
+      } else if (ent.kind === 'dealership') {
+        drawBadge(ex, ey, '#38bdf8', 'CR');
+      } else if (ent.kind === 'market') {
+        drawBadge(ex, ey, '#eab308', 'MK');
+      } else if (ent.kind === 'taxistand') {
+        drawBadge(ex, ey, '#facc15', 'TX');
       } else if (ent.kind === 'precinct') {
         drawBadge(ex, ey, '#3b82f6', 'PD');
       } else if (ent.kind === 'airport') {
@@ -404,6 +425,20 @@ export const HUD: React.FC<HUDProps> = ({
           <span className="font-bold text-orange-300">{Math.ceil(hud.burgerJob.activeDelivery.timer)}s</span>
         </div>
       )}
+      {hud.burgerJob.clockedIn && hud.burgerJob.role === 'kitchen' && hud.burgerJob.kitchenPhase !== 'idle' && (
+        <div className="bg-amber-500/20 border border-amber-400/45 rounded px-2 py-0.5 text-[10px] text-amber-200 flex items-center justify-between gap-2 font-mono-num">
+          <span className="truncate">
+            {hud.burgerJob.kitchenPhase === 'need_grill'
+              ? 'Kitchen 1/3: Grill Patty'
+              : hud.burgerJob.kitchenPhase === 'need_assemble'
+              ? 'Kitchen 2/3: Assemble Burger'
+              : 'Kitchen 3/3: Serve Counter'}
+          </span>
+          {hud.burgerJob.kitchenPhase === 'need_grill' && (
+            <span className="font-bold text-amber-300">{Math.round(hud.burgerJob.grillProgress)}%</span>
+          )}
+        </div>
+      )}
       {player.inWater && (
         <div className="flex items-center gap-2 pt-0.5">
           <span className="text-[10px] text-cyan-300">O2</span>
@@ -430,27 +465,57 @@ export const HUD: React.FC<HUDProps> = ({
     </div>
   );
 
+  const qrSize = 9;
+  const qrCells: boolean[] = [];
+  for (let r = 0; r < qrSize; r++) {
+    for (let c = 0; c < qrSize; c++) {
+      const inTL = r < 3 && c < 3;
+      const inTR = r < 3 && c >= qrSize - 3;
+      const inBL = r >= qrSize - 3 && c < 3;
+      if (inTL || inTR || inBL) {
+        const lr = r >= qrSize - 3 ? r - (qrSize - 3) : r;
+        const lc = c >= qrSize - 3 ? c - (qrSize - 3) : c;
+        qrCells.push(!(lr === 1 && lc === 1));
+      } else {
+        const hash = ((r * 31 + c * 17 + hud.taxiRide.qrSeed * 13) % 7 + 7) % 7;
+        qrCells.push(hash % 2 === 0);
+      }
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-20 h-[100dvh] max-h-[100dvh] overflow-hidden pointer-events-none flex flex-col justify-between"
       style={{
         paddingTop: 'max(10px, env(safe-area-inset-top))',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
-        paddingLeft: 'max(12px, env(safe-area-inset-left))',
-        paddingRight: 'max(12px, env(safe-area-inset-right))',
+        paddingLeft: 'max(10px, env(safe-area-inset-left))',
+        paddingRight: 'max(10px, env(safe-area-inset-right))',
       }}
     >
       {/* Crisp GTA Aim Reticle / Full Sniper Scope Overlay */}
       {!hud.drivingVehicle && (player.equippedWeaponId !== 'fists' || hud.aiming) && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
           {isSniperAim ? (
-            <div className="fixed inset-0 flex items-center justify-center bg-black/55">
-              <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border-2 border-emerald-400/90 bg-emerald-950/15 shadow-[0_0_0_9999px_rgba(0,0,0,0.68)] flex items-center justify-center">
-                <div className="absolute inset-x-0 h-px bg-emerald-400/60" />
-                <div className="absolute inset-y-0 w-px bg-emerald-400/60" />
-                <div className="absolute w-24 h-24 rounded-full border border-emerald-400/35" />
-                <div className="w-2 h-2 rounded-full bg-[#ff4d6d]" />
-                <span className="absolute bottom-3 text-[10px] font-mono-num text-emerald-300 tracking-widest">
+            <div className="fixed inset-0 flex items-center justify-center bg-black/35">
+              <div className="relative w-[min(76vw,76vh,380px)] h-[min(76vw,76vh,380px)] rounded-full border-2 border-emerald-400/95 bg-emerald-950/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.86)] flex items-center justify-center overflow-hidden">
+                <div className="absolute inset-x-0 h-px bg-emerald-400/75" />
+                <div className="absolute inset-y-0 w-px bg-emerald-400/75" />
+                {[-60, -40, -20, 20, 40, 60].map((off) => (
+                  <React.Fragment key={off}>
+                    <div
+                      className="absolute w-px h-2 bg-emerald-300/80"
+                      style={{ transform: `translateX(${off}px)` }}
+                    />
+                    <div
+                      className="absolute h-px w-2 bg-emerald-300/80"
+                      style={{ transform: `translateY(${off}px)` }}
+                    />
+                  </React.Fragment>
+                ))}
+                <div className="absolute w-28 h-28 rounded-full border border-emerald-400/40" />
+                <div className="w-2 h-2 rounded-full bg-[#ff4d6d] shadow-[0_0_6px_#ff4d6d]" />
+                <span className="absolute bottom-3.5 text-[10px] font-mono-num text-emerald-300 tracking-widest bg-black/60 px-2 py-0.5 rounded">
                   {t(lang, 'scopeZoomLabel')}
                 </span>
               </div>
@@ -464,6 +529,64 @@ export const HUD: React.FC<HUDProps> = ({
               <div className="w-1 h-1 rounded-full bg-[#ff4d6d]" />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Flight Cutscene Overlay */}
+      {hud.flightCutscene?.active && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 pointer-events-none p-4">
+          <div className="bg-[#0d1019]/95 border border-sky-400/50 rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-2xl">
+            <div className="text-[11px] font-mono-num uppercase tracking-widest text-sky-300">
+              Vice Air Charter Flight
+            </div>
+            <div className="text-sm font-display font-bold text-white">
+              {hud.flightCutscene.fromName} → {hud.flightCutscene.toName}
+            </div>
+            <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-sky-400 transition-all"
+                style={{ width: `${Math.round(hud.flightCutscene.progress * 100)}%` }}
+              />
+            </div>
+            <div className="text-right text-xs font-mono-num text-sky-200">
+              {Math.round(hud.flightCutscene.progress * 100)}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPI QR Taxi Payment Overlay */}
+      {hud.taxiRide.status === 'payment_due' && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 pointer-events-auto p-4">
+          <div className="bg-[#0e111b] border border-amber-400/50 rounded-2xl p-5 max-w-xs w-full space-y-3 shadow-2xl text-center">
+            <div className="text-xs font-mono-num uppercase tracking-wider text-amber-300">
+              {t(lang, 'upiPayTitle')}
+            </div>
+            <div className="text-sm font-bold text-white truncate">{hud.taxiRide.destLabel}</div>
+            <div className="text-2xl font-mono-num font-extrabold text-emerald-400">${hud.taxiRide.fare}</div>
+            <div className="mx-auto w-32 h-32 bg-white p-2 rounded-xl grid grid-cols-9 gap-0.5 shadow-inner">
+              {qrCells.map((filled, idx) => (
+                <div key={idx} className={filled ? 'bg-neutral-950 rounded-[1px]' : 'bg-white'} />
+              ))}
+            </div>
+            <div className="text-[11px] font-mono-num text-neutral-400">{hud.taxiRide.upiId}</div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onPayTaxiUpi}
+                className="py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold text-xs cursor-pointer"
+              >
+                {t(lang, 'payNow')}
+              </button>
+              <button
+                type="button"
+                onClick={onSkipTaxiFare}
+                className="py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 border border-rose-500/45 text-rose-200 font-semibold text-xs cursor-pointer"
+              >
+                {t(lang, 'runWithoutPaying')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -501,26 +624,24 @@ export const HUD: React.FC<HUDProps> = ({
         )}
 
         {/* Top-Right: Cash, Wanted Stars, Weapon Switcher (◀ Gun ▶), Phone & Settings */}
-        <div className="flex flex-col items-end gap-1.5 pointer-events-auto">
-          <div className="bg-[#0d0f17]/90 border border-white/12 rounded-xl px-2.5 py-1.5 flex items-center gap-2.5 sm:gap-3">
-            {/* Wanted Stars */}
-            <div className="flex items-center gap-0.5" aria-label="6 Star Wanted Level">
+        <div className="max-w-[48vw] sm:max-w-none flex flex-col items-end gap-1.5 pointer-events-auto shrink-0">
+          <div className="bg-[#0d0f17]/90 border border-white/12 rounded-xl px-1.5 py-1 sm:px-2.5 sm:py-1.5 flex items-center gap-1.5 sm:gap-3 max-w-full">
+            <div className="flex items-center gap-0.5 shrink-0" aria-label="6 Star Wanted Level">
               {[1, 2, 3, 4, 5, 6].map((star) => (
                 <StarSvg
                   key={star}
                   filled={star <= hud.wanted.stars}
-                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                  className={`w-2.5 h-2.5 sm:w-4 sm:h-4 ${
                     star <= hud.wanted.stars ? 'text-amber-400' : 'text-neutral-700'
                   }`}
                 />
               ))}
             </div>
 
-            {/* Cash */}
-            <div className="flex items-center gap-1 text-right">
-              <CashSvg className="w-4 h-4 text-emerald-400 shrink-0" />
-              <div>
-                <div className="font-mono-num font-bold text-sm sm:text-base text-emerald-400 leading-tight">
+            <div className="flex items-center gap-1 text-right min-w-0">
+              <CashSvg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="font-mono-num font-bold text-xs sm:text-base text-emerald-400 leading-tight truncate">
                   ${hud.cash.toLocaleString()}
                 </div>
                 <div className="font-mono-num text-[10px] text-neutral-400 hidden sm:block">
@@ -529,47 +650,45 @@ export const HUD: React.FC<HUDProps> = ({
               </div>
             </div>
 
-            {/* Phone & Settings Buttons */}
-            <div className="flex items-center gap-1 pl-1 border-l border-white/10">
+            <div className="flex items-center gap-1 pl-1 border-l border-white/10 shrink-0">
               <button
                 type="button"
                 onClick={onOpenPhone}
-                className="p-2 rounded-lg bg-[#ff5a6e] hover:bg-[#ff4259] text-white cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-lg bg-[#ff5a6e] hover:bg-[#ff4259] text-white cursor-pointer"
                 aria-label={t(lang, 'phone')}
               >
-                <PhoneSvg className="w-4 h-4" />
+                <PhoneSvg className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
               <button
                 type="button"
                 onClick={onOpenPause}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-100 cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-100 cursor-pointer"
                 aria-label={t(lang, 'settings')}
               >
-                <SettingsGearSvg className="w-4 h-4" />
+                <SettingsGearSvg className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             </div>
           </div>
 
-          {/* Weapon Switcher ◀ Gun ▶ + Ammo */}
-          <div className="bg-[#0d0f17]/90 border border-white/12 rounded-xl px-1.5 py-1 flex items-center gap-1 text-xs">
+          <div className="bg-[#0d0f17]/90 border border-white/12 rounded-xl px-1 py-0.5 sm:px-1.5 sm:py-1 flex items-center gap-0.5 sm:gap-1 text-[11px] sm:text-xs max-w-full">
             <button
               type="button"
               onClick={() => onCycleWeapon(-1)}
-              className="p-1.5 rounded-lg hover:bg-white/15 text-neutral-300 cursor-pointer"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/15 text-neutral-300 cursor-pointer shrink-0"
               aria-label="Previous weapon"
             >
-              <ArrowDirSvg dir="left" className="w-3.5 h-3.5" />
+              <ArrowDirSvg dir="left" className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             </button>
             <button
               type="button"
               onClick={onOpenWheel}
-              className="px-2 py-0.5 flex items-center gap-2 hover:bg-white/10 rounded-lg cursor-pointer"
+              className="px-1.5 py-0.5 flex items-center gap-1 sm:gap-2 hover:bg-white/10 rounded-lg cursor-pointer min-w-0"
             >
-              <WeaponSvg weaponId={player.equippedWeaponId} className="w-4 h-4 text-[#ff5a6e]" />
-              <span className="font-semibold text-white truncate max-w-[115px]">{weaponName}</span>
-              <span className="font-mono-num text-[11px] text-[#2dd4bf]">{ammoText}</span>
+              <WeaponSvg weaponId={player.equippedWeaponId} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#ff5a6e] shrink-0" />
+              <span className="font-semibold text-white truncate max-w-[68px] sm:max-w-[115px]">{weaponName}</span>
+              <span className="font-mono-num text-[10px] sm:text-[11px] text-[#2dd4bf] shrink-0">{ammoText}</span>
               {(player.grenades > 0 || player.molotovs > 0) && (
-                <span className="text-[10px] text-amber-300 font-mono-num flex items-center gap-0.5 pl-1 border-l border-white/10">
+                <span className="hidden sm:flex text-[10px] text-amber-300 font-mono-num items-center gap-0.5 pl-1 border-l border-white/10">
                   <Bomb className="w-3 h-3" /> {player.grenades + player.molotovs}
                 </span>
               )}
@@ -578,20 +697,20 @@ export const HUD: React.FC<HUDProps> = ({
             <button
               type="button"
               onClick={() => onCycleWeapon(1)}
-              className="p-1.5 rounded-lg hover:bg-white/15 text-neutral-300 cursor-pointer"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/15 text-neutral-300 cursor-pointer shrink-0"
               aria-label="Next weapon"
             >
-              <ArrowDirSvg dir="right" className="w-3.5 h-3.5" />
+              <ArrowDirSvg dir="right" className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             </button>
           </div>
 
           {(hud.wanted.witnessActive || hud.wanted.stars > 0 || hud.wanted.cctvRecorded) && (
-            <div className="bg-[#181216]/92 border border-rose-500/35 rounded-lg px-3 py-1.5 text-xs space-y-1 min-w-[190px]">
+            <div className="bg-[#181216]/92 border border-rose-500/35 rounded-lg px-2.5 py-1.5 text-[11px] sm:text-xs space-y-1 max-w-full sm:min-w-[190px]">
               {hud.wanted.witnessActive && (
                 <div>
-                  <div className="flex justify-between text-amber-300 font-medium">
-                    <span>{t(lang, 'witnessCalling')}</span>
-                    <span className="font-mono-num">{Math.round(hud.wanted.witnessProgress)}%</span>
+                  <div className="flex justify-between gap-2 text-amber-300 font-medium">
+                    <span className="truncate">{t(lang, 'witnessCalling')}</span>
+                    <span className="font-mono-num shrink-0">{Math.round(hud.wanted.witnessProgress)}%</span>
                   </div>
                   <div className="h-1 bg-neutral-800 rounded mt-1 overflow-hidden">
                     <div className="h-full bg-amber-400" style={{ width: `${hud.wanted.witnessProgress}%` }} />
@@ -599,28 +718,27 @@ export const HUD: React.FC<HUDProps> = ({
                 </div>
               )}
               {hud.wanted.stars > 0 && (
-                <div className="flex justify-between text-rose-300">
-                  <span>{hud.wanted.evading ? t(lang, 'evadingPolice') : t(lang, 'policePursuit')}</span>
-                  <span className="font-mono-num">{Math.round(hud.wanted.evadeProgress)}%</span>
+                <div className="flex justify-between gap-2 text-rose-300">
+                  <span className="truncate">{hud.wanted.evading ? t(lang, 'evadingPolice') : t(lang, 'policePursuit')}</span>
+                  <span className="font-mono-num shrink-0">{Math.round(hud.wanted.evadeProgress)}%</span>
                 </div>
               )}
               {hud.wanted.cctvRecorded && (
-                <div className="text-[10px] text-amber-200">{t(lang, 'cctvRecorded')}</div>
+                <div className="text-[10px] text-amber-200 truncate">{t(lang, 'cctvRecorded')}</div>
               )}
             </div>
           )}
 
-          {/* Compact Vehicle Telemetry when driving in Touch Mode */}
           {touchMode && hud.drivingVehicle && (
-            <div className="bg-[#0d0f17]/90 border border-white/15 rounded-lg px-3 py-1.5 flex items-center gap-3 text-xs">
+            <div className="bg-[#0d0f17]/90 border border-white/15 rounded-lg px-2 py-1 flex items-center gap-2 text-[10px] max-w-full">
               <div className="font-mono-num font-bold text-white">
                 {Math.round(Math.abs(hud.drivingVehicle.speed) * 3.1)}{' '}
-                <span className="text-[10px] text-neutral-400">MPH</span>
+                <span className="text-[9px] text-neutral-400">MPH</span>
               </div>
-              <div className="font-mono-num text-[10px] text-amber-300">
+              <div className="font-mono-num text-amber-300">
                 FUEL {Math.round(hud.drivingVehicle.fuel)}%
               </div>
-              <div className="font-mono-num text-[10px] text-cyan-300">
+              <div className="font-mono-num text-cyan-300">
                 NOS {Math.round(hud.drivingVehicle.nitroCharge ?? 100)}%
               </div>
             </div>
@@ -686,8 +804,86 @@ export const HUD: React.FC<HUDProps> = ({
           <div className="w-1" />
         )}
 
-        {/* Bottom-Center: NPC Subtitle, Context Prompt & Desktop Utility Bar */}
+        {/* Bottom-Center: Robbery Actions, Smart Taxi Status, Quick Dining/Partner Buttons, NPC Subtitle, Context Prompt */}
         <div className="flex flex-col items-center gap-2 pointer-events-auto">
+          {hud.contextKind === 'rob_cashier' && hud.robberyHud.stage === 'intimidated' && (
+            <button
+              type="button"
+              onClick={onContextAction}
+              className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-display font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer animate-bounce"
+            >
+              Rob Cashier
+            </button>
+          )}
+
+          {hud.robberyHud.stage === 'packing' && (
+            <div className="bg-amber-500/20 border border-amber-400/60 text-amber-200 text-xs font-bold px-4 py-1.5 rounded-lg animate-pulse">
+              {hud.robberyHud.cashierName} packing Cash Bag on counter...
+            </div>
+          )}
+
+          {hud.robberyHud.stage === 'bag_ready' && (
+            <button
+              type="button"
+              onClick={onCollectRobberyBag}
+              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-display font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer animate-bounce"
+            >
+              Take Cash (+${hud.robberyHud.amount.toLocaleString()})
+            </button>
+          )}
+
+          {hud.contextKind === 'deliver_burger' && (
+            <button
+              type="button"
+              onClick={onContextAction}
+              className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-neutral-950 font-display font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer animate-bounce"
+            >
+              {hud.contextAction || 'Deliver'}
+            </button>
+          )}
+
+          {hud.taxiRide.status !== 'idle' && hud.taxiRide.status !== 'payment_due' && (
+            <div className="bg-[#141724]/95 border border-amber-400/50 text-amber-200 text-xs px-3 py-1.5 rounded-xl flex items-center gap-2.5 shadow-lg">
+              <span className="font-medium truncate max-w-[210px]">
+                {hud.taxiRide.status === 'en_route_pickup'
+                  ? 'Smart Cab en route to you...'
+                  : hud.taxiRide.status === 'waiting_board'
+                  ? `Smart Cab waiting! Board for ${hud.taxiRide.destLabel}`
+                  : `Riding Cab → ${hud.taxiRide.destLabel} ($${hud.taxiRide.fare})`}
+              </span>
+              <button
+                type="button"
+                onClick={onCancelTaxi}
+                className="px-2 py-0.5 rounded bg-rose-500/25 hover:bg-rose-500/40 text-rose-200 text-[10px] font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {(hud.canEatAtBurgerShop || hud.canInvitePartnerSit) && (
+            <div className="flex items-center gap-2">
+              {hud.canEatAtBurgerShop && (
+                <button
+                  type="button"
+                  onClick={onEatBurgerShop}
+                  className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-neutral-950 text-xs font-bold cursor-pointer shadow-lg"
+                >
+                  {t(lang, 'eatBurgerBtn')}
+                </button>
+              )}
+              {hud.canInvitePartnerSit && (
+                <button
+                  type="button"
+                  onClick={onInvitePartnerSit}
+                  className="px-3 py-1.5 rounded-lg bg-[#2dd4bf] hover:bg-[#14b8a6] text-neutral-950 text-xs font-bold cursor-pointer shadow-lg"
+                >
+                  {t(lang, 'invitePartnerBtn')}
+                </button>
+              )}
+            </div>
+          )}
+
           {hud.npcSubtitle && (
             <div
               className={`bg-[#0d0f17]/95 border rounded-lg px-4 py-1.5 text-xs max-w-md text-center ${

@@ -540,6 +540,7 @@ export function animateNpcRig(
   walkPhase: number,
   options: {
     handsUp?: boolean;
+    packing?: boolean;
     calling911?: boolean;
     umbrella?: boolean;
     checkingPhone?: boolean;
@@ -570,9 +571,24 @@ export function animateNpcRig(
   rig.bodyGroup.position.y = 0;
   rig.bodyGroup.rotation.x = 0;
 
+  if (options.packing) {
+    const scoop = Math.sin(options.timeSec * 14);
+    rig.bodyGroup.rotation.x = 0.14;
+    rig.leftArm.rotation.x = -0.95 + scoop * 0.28;
+    rig.rightArm.rotation.x = -0.95 - scoop * 0.28;
+    rig.leftForearm.rotation.x = -0.75;
+    rig.rightForearm.rotation.x = -0.75;
+    rig.leftLeg.rotation.x = 0;
+    rig.rightLeg.rotation.x = 0;
+    rig.leftCalf.rotation.x = 0.08;
+    rig.rightCalf.rotation.x = 0.08;
+    return;
+  }
+
   if (options.handsUp) {
-    rig.leftArm.rotation.x = -2.4;
-    rig.rightArm.rotation.x = -2.4;
+    const shiver = Math.sin(options.timeSec * 22) * 0.045;
+    rig.leftArm.rotation.x = -2.4 + shiver;
+    rig.rightArm.rotation.x = -2.4 - shiver;
     rig.leftForearm.rotation.x = -0.25;
     rig.rightForearm.rotation.x = -0.25;
     rig.leftLeg.rotation.x = 0;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OutfitId, ProtagonistId, VehicleTier } from './types';
 import { createAnimatedFountainWaterMaterial } from './water';
+import { createStorefrontSignTexture } from './textures';
 
 export interface CharacterRig {
   root: THREE.Group;
@@ -1969,12 +1970,13 @@ export function createOverWaterBridgeMesh(
   flatDeck.receiveShadow = true;
   g.add(flatDeck);
 
-  // Sloped approaches at both ends
-  const slopeAngle = Math.atan2(deckHeight, rampLen);
-  const rampHyp = Math.hypot(rampLen, deckHeight);
+  // Sloped approaches at both ends (from ROAD_Y = 0.08 up to deckHeight)
+  const rampRise = Math.max(0.5, deckHeight - 0.08);
+  const slopeAngle = Math.atan2(rampRise, rampLen);
+  const rampHyp = Math.hypot(rampLen, rampRise);
   [-1, 1].forEach((dir) => {
     const ramp = new THREE.Mesh(new THREE.BoxGeometry(width, 0.48, rampHyp), deckMat);
-    ramp.position.set(0, deckHeight / 2 - 0.22, dir * (flatSpan / 2 + rampLen / 2));
+    ramp.position.set(0, 0.08 + rampRise / 2 - 0.24, dir * (flatSpan / 2 + rampLen / 2));
     ramp.rotation.x = dir * slopeAngle;
     ramp.receiveShadow = true;
     g.add(ramp);
@@ -2351,5 +2353,28 @@ export function createTaxiStandMesh(): THREE.Group {
   return g;
 }
 
+export function createStorefrontSignMesh(
+  title: string,
+  subtitle: string,
+  bgColor: string,
+  accentColor: string,
+  width = 8.4
+): THREE.Group {
+  const g = new THREE.Group();
+  const height = width * 0.28;
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.65 });
+  const signTex = createStorefrontSignTexture(title, subtitle, bgColor, accentColor);
+  const faceMat = new THREE.MeshStandardMaterial({
+    map: signTex,
+    emissiveMap: signTex,
+    emissive: new THREE.Color(0xffffff),
+    emissiveIntensity: 0.72,
+    roughness: 0.3,
+  });
 
-
+  const casing = new THREE.Mesh(new THREE.BoxGeometry(width + 0.24, height + 0.24, 0.28), frameMat);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(width, height), faceMat);
+  face.position.z = 0.15;
+  g.add(casing, face);
+  return g;
+}

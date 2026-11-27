@@ -516,7 +516,26 @@ export interface HudSnapshot {
   aiming: boolean;
   contextPrompt: string | null;
   contextAction: string | null;
-  contextKind: 'door' | 'shop' | 'npc' | 'activity' | 'seat' | 'fuel' | 'airport_ticket' | 'taxi_stand' | null;
+  contextKind:
+    | 'door'
+    | 'shop'
+    | 'npc'
+    | 'activity'
+    | 'seat'
+    | 'fuel'
+    | 'airport_ticket'
+    | 'taxi_stand'
+    | 'rob_cashier'
+    | 'take_cash_bag'
+    | 'deliver_burger'
+    | 'eat_burger'
+    | null;
+  robberyHud: {
+    stage: 'none' | 'intimidated' | 'packing' | 'bag_ready';
+    cashierName: string;
+    amount: number;
+    interiorId: string | null;
+  };
   waypoint: { x: number; z: number; label: string } | null;
   gpsRoute: Array<{ x: number; z: number }>;
   activeMission: MissionDef | null;

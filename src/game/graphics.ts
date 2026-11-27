@@ -29,10 +29,10 @@ export function createEnvironmentLightingRig(renderer: THREE.WebGLRenderer, scen
   scene.add(sky);
 
   const skyUniforms = sky.material.uniforms;
-  skyUniforms['turbidity'].value = 2.6;
-  skyUniforms['rayleigh'].value = 2.1;
-  skyUniforms['mieCoefficient'].value = 0.002;
-  skyUniforms['mieDirectionalG'].value = 0.76;
+  skyUniforms['turbidity'].value = 2.2;
+  skyUniforms['rayleigh'].value = 1.45;
+  skyUniforms['mieCoefficient'].value = 0.0006;
+  skyUniforms['mieDirectionalG'].value = 0.58;
 
   return { sky, skyUniforms };
 }
@@ -62,9 +62,9 @@ export function createPostProcessingPipeline(
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(width, height),
-    0.14, // subtle glow strictly on true neon/lightbars/muzzle flash
-    0.28,
-    1.65
+    0.22,
+    0.35,
+    0.88
   );
   composer.addPass(bloomPass);
 

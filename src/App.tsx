@@ -71,6 +71,13 @@ export default function App() {
           onToggleSlowMo={() => engine?.toggleSlowMo()}
           onCycleWeapon={(dir) => engine?.cycleWeapon(dir)}
           onRespawn={() => engine?.respawnPlayer()}
+          onCollectRobberyBag={() => engine?.collectRobberyBag()}
+          onContextAction={() => engine?.triggerContextInteractPublic()}
+          onPayTaxiUpi={() => engine?.payTaxiUpi()}
+          onSkipTaxiFare={() => engine?.skipTaxiFare()}
+          onCancelTaxi={() => engine?.cancelTaxi()}
+          onEatBurgerShop={() => engine?.eatAtBurgerShop()}
+          onInvitePartnerSit={() => engine?.invitePartnerSitNearby()}
         />
       )}
 
@@ -131,6 +138,8 @@ export default function App() {
           onUseTraumaKit={() => engine.useTraumaKit()}
           onUsePainkiller={() => engine.usePainkiller()}
           onEatBurger={() => engine.eatBurger()}
+          onBookTaxi={(x, z, label) => engine.bookTaxi(x, z, label)}
+          onCancelTaxi={() => engine.cancelTaxi()}
         />
       )}
 
@@ -139,6 +148,7 @@ export default function App() {
           hud={hud}
           onClose={() => engine.closeModal()}
           onSetWaypoint={(x, z, label) => engine.setWaypoint(x, z, label)}
+          onBookTaxi={(x, z, label) => engine.bookTaxi(x, z, label)}
         />
       )}
 
@@ -165,6 +175,7 @@ export default function App() {
           onToggleUniform={() => engine.putOnBurgerUniform()}
           onClockIn={() => engine.clockInBurgerShot()}
           onCompleteTask={(task, pay) => engine.completeBurgerShiftTask(task, pay)}
+          onSetRole={(role) => engine.setBurgerRole(role)}
           onLaunchDelivery={() => engine.launchBurgerDelivery()}
           onStealRegister={() => engine.stealBurgerRegister()}
           onQuitChaos={() => engine.quitBurgerShotChaos()}

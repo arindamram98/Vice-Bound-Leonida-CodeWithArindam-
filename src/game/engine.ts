@@ -10,6 +10,8 @@ import {
 import {
   applyCharacterAppearance,
   CharacterRig,
+  createAirportFenceAndGateMesh,
+  createAirportTicketCounterMesh,
   createBillboardMesh,
   createBurgerShotInteriorGroup,
   createBusStopMesh,
@@ -23,7 +25,9 @@ import {
   createParkFountain,
   createPlaygroundSet,
   createRoadSign,
+  createStorefrontSignMesh,
   createStreetStall,
+  createTaxiStandMesh,
   createTrafficLightRig,
   createVehicleRig,
   createWildlifeRig,
@@ -43,6 +47,7 @@ import {
   ControlSettings,
   CriminalProfile,
   DarkWebDrop,
+  FlightCutsceneState,
   HairId,
   HudSnapshot,
   InteriorInfo,
@@ -58,6 +63,7 @@ import {
   SeatSpot,
   SocialPost,
   StockAsset,
+  TaxiRideState,
   VehicleState,
   VehicleTier,
   WantedState,
@@ -66,9 +72,11 @@ import {
 } from './types';
 import { createAnimatedOceanWater, getWaterWaveHeight, OceanWaterSystem } from './water';
 import {
-  AIRPORT_ZONE,
+  AIRPORT_FENCE_WALLS,
+  AIRPORT_ZONES,
   BRIDGES,
   BuildingFootprint,
+  BURGER_SHOT_STATIONS,
   CENTRAL_PARK,
   CircleCollider,
   CITY_JOBS,
@@ -85,8 +93,10 @@ import {
   INITIAL_SOCIAL_POSTS,
   INITIAL_STOCKS,
   isWaterChannel,
+  isWaterSurfaceAt,
   LAND_Y,
   NORTH_ISLAND,
+  NORTH_ROAD_Z,
   ROAD_SEGMENTS,
   ROAD_X,
   ROAD_Y,
@@ -95,7 +105,9 @@ import {
   SEAT_SPOTS,
   SIDE_ACTIVITIES,
   SOUTH_ISLAND,
+  SOUTH_ROAD_Z,
   STREET_STALLS,
+  TAXI_STAND,
   TreasureSpot,
   WeakTreeSpot,
   WOODEN_DOCKS,
@@ -129,6 +141,7 @@ interface WorldVehicle {
   trafficAxis: 'z' | 'x';
   driverPresent: boolean;
   hijackedByNpc?: WorldNPC | null;
+  patrolTarget?: { x: number; z: number } | null;
   leftDoorAngle: number;
   rightDoorAngle: number;
   leftDoorTimer: number;
@@ -137,7 +150,7 @@ interface WorldVehicle {
 
 interface WildlifeEntry {
   id: string;
-  species: 'gator' | 'shark' | 'dolphin';
+  species: 'gator' | 'shark' | 'dolphin' | 'deer' | 'boar' | 'bird' | 'fish';
   rig: WildlifeRig;
   x: number;
   y: number;
@@ -184,6 +197,9 @@ interface WorldNPC {
   interiorId?: string;
   boardingCar?: WorldVehicle | null;
   drivingCar?: WorldVehicle | null;
+  packingCash?: boolean;
+  panicked?: boolean;
+  hasScreamed?: boolean;
 }
 
 interface FirePool {
@@ -571,6 +587,37 @@ export class ViceCityEngine {
     pendingPay: 0,
     activeDelivery: null,
   };
+  private taxiRide: TaxiRideState = {
+    status: 'idle',
+    destLabel: '',
+    destX: 0,
+    destZ: 0,
+    fare: 0,
+    upiId: 'vicecab@leonidapay',
+    qrSeed: 101,
+  };
+  private taxiVehicle: WorldVehicle | null = null;
+  private flightCutscene: FlightCutsceneState | null = null;
+  private activeRobbery: {
+    stage: 'none' | 'intimidated' | 'packing' | 'bag_ready';
+    cashier: WorldNPC | null;
+    interiorId: string | null;
+    amount: number;
+    timer: number;
+  } = { stage: 'none', cashier: null, interiorId: null, amount: 0, timer: 0 };
+  private aimRaycaster = new THREE.Raycaster();
+  private robberyBagMesh: THREE.Group | null = null;
+  private deliveryBeaconMesh: THREE.Group | null = null;
+  private pendingRobberyAlert: {
+    interiorId: string;
+    storeX: number;
+    storeZ: number;
+    exited: boolean;
+    timer: number;
+  } | null = null;
+  private burgerPrepTimer = 0;
+  private canEatAtBurgerShop = false;
+  private canInvitePartnerSit = false;
   private activeMissionId: string | null = 'mis_1';
   private waypoint: { x: number; z: number; label: string } | null = {
     x: INITIAL_MISSIONS[0].targetX,
@@ -608,8 +655,8 @@ export class ViceCityEngine {
 
   private camYaw = Math.PI;
   private camPitch = 0.24;
-  private camCurrentPos = new THREE.Vector3(212, 9.5, 224);
-  private camCurrentLook = new THREE.Vector3(206, LAND_Y + 1.5, 213);
+  private camCurrentPos = new THREE.Vector3(1052, 9.5, 1064);
+  private camCurrentLook = new THREE.Vector3(1046.5, LAND_Y + 1.5, 1053.5);
   private playerVy = 0;
   private onGround = true;
   private walkPhase = 0;
@@ -683,9 +730,9 @@ export class ViceCityEngine {
         outfit: 'street',
         hair: 'classic',
         beardLevel: 25,
-        x: 206.5,
+        x: 1046.5,
         y: LAND_Y,
-        z: 213.5,
+        z: 1053.5,
         yaw: Math.PI,
         inWater: false,
         underwater: false,
@@ -741,9 +788,9 @@ export class ViceCityEngine {
         outfit: 'street',
         hair: 'classic',
         beardLevel: 0,
-        x: 204.0,
+        x: 1044.0,
         y: LAND_Y + 0.46,
-        z: 207.5,
+        z: 1047.5,
         yaw: 0,
         inWater: false,
         underwater: false,
@@ -783,7 +830,7 @@ export class ViceCityEngine {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.56;
+    this.renderer.toneMappingExposure = 0.72;
     const maxPr = this.controlSettings.autoDetectedMobile ? 1.5 : 2;
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, maxPr));
     this.renderer.setSize(this.container.clientWidth || window.innerWidth, this.container.clientHeight || window.innerHeight);
@@ -793,23 +840,23 @@ export class ViceCityEngine {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x5299d8);
-    this.scene.fog = new THREE.FogExp2(0x8bc0ea, 0.00075);
+    this.scene.fog = new THREE.FogExp2(0x8bc0ea, 0.00028);
 
     this.envSky = createEnvironmentLightingRig(this.renderer, this.scene);
 
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(65, w / h, 0.25, 1450);
+    this.camera = new THREE.PerspectiveCamera(65, w / h, 0.25, 6500);
 
-    this.hemiLight = new THREE.HemisphereLight(0x7cc4f8, 0x3b2d24, 0.34);
+    this.hemiLight = new THREE.HemisphereLight(0x8fd0ff, 0x3f4c36, 0.48);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffead2, 1.05);
-    this.sunLight.position.set(280, 95, -90);
+    this.sunLight = new THREE.DirectionalLight(0xffeed8, 1.15);
+    this.sunLight.position.set(280, 120, -90);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.set(this.isSoftwareGl ? 512 : 2048, this.isSoftwareGl ? 512 : 2048);
     this.sunLight.shadow.camera.near = 5;
-    this.sunLight.shadow.camera.far = 280;
+    this.sunLight.shadow.camera.far = 320;
     const d = 75;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
@@ -880,49 +927,105 @@ export class ViceCityEngine {
     this.scene.add(this.rainLines);
   }
 
+  private createRoundedIslandMesh(
+    cx: number,
+    cz: number,
+    hx: number,
+    hz: number,
+    cornerRadius: number,
+    depth: number,
+    topY: number,
+    mat: THREE.Material,
+    uvScale = 24
+  ): THREE.Mesh {
+    const r = Math.min(cornerRadius, hx - 2, hz - 2);
+    const shape = new THREE.Shape();
+    shape.moveTo(-hx + r, -hz);
+    shape.lineTo(hx - r, -hz);
+    shape.quadraticCurveTo(hx, -hz, hx, -hz + r);
+    shape.lineTo(hx, hz - r);
+    shape.quadraticCurveTo(hx, hz, hx - r, hz);
+    shape.lineTo(-hx + r, hz);
+    shape.quadraticCurveTo(-hx, hz, -hx, hz - r);
+    shape.lineTo(-hx, -hz + r);
+    shape.quadraticCurveTo(-hx, -hz, -hx + r, -hz);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 16 });
+    geo.rotateX(Math.PI / 2);
+
+    // Normalize ExtrudeGeometry UVs in world meters so tiled grass/sand/sidewalk never smears into flat grey
+    const posAttr = geo.attributes.position;
+    const uvAttr = geo.attributes.uv;
+    if (posAttr && uvAttr) {
+      for (let i = 0; i < posAttr.count; i++) {
+        uvAttr.setXY(i, posAttr.getX(i) / uvScale, posAttr.getZ(i) / uvScale);
+      }
+      uvAttr.needsUpdate = true;
+    }
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(cx, topY, cz);
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
   private buildWorld() {
-    // 1. Two Distinct Cities (Vice Downtown + Northport), Airport Wing, Ocean Channel (y=0.0) & 2 Tropical Safehouse Islands
-    const sidewalkMat = new THREE.MeshStandardMaterial({ map: this.textures.sidewalk, roughness: 0.85, metalness: 0.05 });
-    const sandMat = new THREE.MeshStandardMaterial({ map: this.textures.sand, color: 0xe6d7b9, roughness: 0.92, metalness: 0.02 });
-    const grassMat = new THREE.MeshStandardMaterial({ map: this.textures.grass, roughness: 0.92, metalness: 0.02 });
+    // 1. 5x Scale Multi-Island Vice City: Lush Tropical Turf Islands, Golden Beaches, Airports & Atolls
+    const sidewalkMat = new THREE.MeshStandardMaterial({
+      map: this.textures.sidewalk,
+      roughness: 0.84,
+      metalness: 0.04,
+    });
+    const sandMat = new THREE.MeshStandardMaterial({
+      map: this.textures.sand,
+      roughness: 0.92,
+      metalness: 0.02,
+    });
+    const grassMat = new THREE.MeshStandardMaterial({
+      map: this.textures.grass,
+      roughness: 0.9,
+      metalness: 0.02,
+    });
 
-    // South Island: Vice Downtown (top face strictly at LAND_Y = 0.4, vertical seawall sides into deep water)
-    const southLand = new THREE.Mesh(new THREE.BoxGeometry(SOUTH_ISLAND.hx * 2, 1.4, SOUTH_ISLAND.hz * 2), sidewalkMat);
-    southLand.position.set(SOUTH_ISLAND.cx, LAND_Y - 0.7, SOUTH_ISLAND.cz);
-    southLand.receiveShadow = true;
-    this.scene.add(southLand);
+    // South & North Islands use rich tropical grass base at LAND_Y = 0.0 (never a blank grey slab!)
+    const southLand = this.createRoundedIslandMesh(
+      SOUTH_ISLAND.cx,
+      SOUTH_ISLAND.cz,
+      SOUTH_ISLAND.hx,
+      SOUTH_ISLAND.hz,
+      160,
+      4.5,
+      LAND_Y,
+      grassMat,
+      22
+    );
+    const southBeach = this.createRoundedIslandMesh(1735, SOUTH_ISLAND.cz, 74, SOUTH_ISLAND.hz - 85, 42, 4.4, LAND_Y - 0.02, sandMat, 18);
+    const southChannelBeach = this.createRoundedIslandMesh(25, 405, 1690, 36, 20, 4.4, LAND_Y - 0.02, sandMat, 18);
+    this.scene.add(southLand, southBeach, southChannelBeach);
 
-    const southBeach = new THREE.Mesh(new THREE.BoxGeometry(34, 1.38, SOUTH_ISLAND.hz * 2 - 4), sandMat);
-    southBeach.position.set(355, LAND_Y - 0.695, SOUTH_ISLAND.cz);
-    southBeach.receiveShadow = true;
-    this.scene.add(southBeach);
+    const northLand = this.createRoundedIslandMesh(
+      NORTH_ISLAND.cx,
+      NORTH_ISLAND.cz,
+      NORTH_ISLAND.hx,
+      NORTH_ISLAND.hz,
+      160,
+      4.5,
+      LAND_Y,
+      grassMat,
+      22
+    );
+    const northChannelBeach = this.createRoundedIslandMesh(-25, -405, 1640, 36, 20, 4.4, LAND_Y - 0.02, sandMat, 18);
+    this.scene.add(northLand, northChannelBeach);
 
-    // North Island: Northport (top face at LAND_Y = 0.4)
-    const northLand = new THREE.Mesh(new THREE.BoxGeometry(NORTH_ISLAND.hx * 2, 1.4, NORTH_ISLAND.hz * 2), sidewalkMat);
-    northLand.position.set(NORTH_ISLAND.cx, LAND_Y - 0.7, NORTH_ISLAND.cz);
-    northLand.receiveShadow = true;
-    this.scene.add(northLand);
+    // 2 Fenced International Airport Wings (South Vice & Northport) on crisp concrete tarmac
+    for (const az of AIRPORT_ZONES) {
+      const airportSlab = this.createRoundedIslandMesh(az.cx, az.cz, az.hx, az.hz, 60, 4.5, LAND_Y, sidewalkMat, 14);
+      this.scene.add(airportSlab);
+    }
 
-    const northWoodsGrass = new THREE.Mesh(new THREE.PlaneGeometry(NORTH_ISLAND.hx * 2 - 6, 108), grassMat);
-    northWoodsGrass.rotation.x = -Math.PI / 2;
-    northWoodsGrass.position.set(NORTH_ISLAND.cx, LAND_Y + 0.006, -486);
-    northWoodsGrass.receiveShadow = true;
-    this.scene.add(northWoodsGrass);
-
-    // Leonida International Airport Wing (-560..-320, -520..-250)
-    const airportSlab = new THREE.Mesh(new THREE.BoxGeometry(240, 1.4, 270), sidewalkMat);
-    airportSlab.position.set(-440, LAND_Y - 0.7, -385);
-    airportSlab.receiveShadow = true;
-    this.scene.add(airportSlab);
-
-    // 2 Distant Safehouse Islands (Paradise Key & Starlight Atoll) with beaches, gardens & Luxury Bungalows
+    // 2 Distant Safehouse Islands (Paradise Key & Starlight Atoll) with golden beaches, green lawns & Luxury Bungalows
     for (const isl of SAFEHOUSE_ISLANDS) {
-      const sandIsland = new THREE.Mesh(new THREE.CylinderGeometry(isl.halfSize, isl.halfSize + 10, 1.4, 24), sandMat);
-      sandIsland.position.set(isl.cx, LAND_Y - 0.7, isl.cz);
-      sandIsland.receiveShadow = true;
-      const lawnPatch = new THREE.Mesh(new THREE.CylinderGeometry(isl.halfSize - 18, isl.halfSize - 18, 0.04, 20), grassMat);
-      lawnPatch.position.set(isl.cx, LAND_Y + 0.015, isl.cz);
-      lawnPatch.receiveShadow = true;
+      const sandIsland = this.createRoundedIslandMesh(isl.cx, isl.cz, isl.halfSize, isl.halfSize, isl.cornerRadius, 4.5, LAND_Y - 0.01, sandMat, 18);
+      const lawnPatch = this.createRoundedIslandMesh(isl.cx, isl.cz, isl.halfSize - 42, isl.halfSize - 42, Math.max(20, isl.cornerRadius - 25), 0.1, LAND_Y + 0.025, grassMat, 18);
       const bungalow = createLuxuryBungalowMesh(isl.accentColor);
       bungalow.position.set(isl.bungalowX, LAND_Y, isl.bungalowZ);
       if (bungalow.userData.waterMaterial) {
@@ -931,19 +1034,19 @@ export class ViceCityEngine {
       this.scene.add(sandIsland, lawnPatch, bungalow);
     }
 
-    // Underwater Seabed & Animated GLSL Ocean Plane strictly at y = 0.0!
+    // Deep Seabed & Animated GLSL Ocean Plane strictly at y = -0.35!
     const seabed = new THREE.Mesh(
-      new THREE.PlaneGeometry(1800, 1600),
-      new THREE.MeshStandardMaterial({ color: 0x5c5340, roughness: 0.95 })
+      new THREE.PlaneGeometry(7800, 7800),
+      new THREE.MeshStandardMaterial({ color: 0x3b4d4f, roughness: 0.95 })
     );
     seabed.rotation.x = -Math.PI / 2;
-    seabed.position.set(120, -3.4, 0);
+    seabed.position.set(0, -3.5, 0);
     this.scene.add(seabed);
 
     this.oceanWater = createAnimatedOceanWater(this.textures.waterNormal);
     this.scene.add(this.oceanWater.mesh);
 
-    // 2. Segmented Asphalt Streets & Highways strictly at ROAD_Y = 0.43 (never bleeding with water at y=0)
+    // 2. Segmented Asphalt Streets & Highways strictly at ROAD_Y = 0.08 with crisp world-meter lane markings
     this.roadMat = new THREE.MeshStandardMaterial({
       map: this.textures.asphalt,
       normalMap: this.textures.asphaltNormal,
@@ -961,41 +1064,132 @@ export class ViceCityEngine {
       metalness: 0.1,
     });
 
+    const sidewalkTransforms: Array<{ x: number; z: number; sx: number; sz: number }> = [];
+
     for (const seg of ROAD_SEGMENTS) {
       const dx = seg.x2 - seg.x1;
       const dz = seg.z2 - seg.z1;
       const len = Math.hypot(dx, dz);
       const isEw = Math.abs(dx) > Math.abs(dz);
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(seg.width, len),
-        seg.isHighway ? highwayMat : this.roadMat
-      );
+      const roadGeo = new THREE.PlaneGeometry(seg.width, len);
+      const uv = roadGeo.attributes.uv;
+      const vTiles = Math.max(1, len / 26);
+      for (let i = 0; i < uv.count; i++) {
+        uv.setY(i, uv.getY(i) * vTiles);
+      }
+      uv.needsUpdate = true;
+
+      const mesh = new THREE.Mesh(roadGeo, seg.isHighway ? highwayMat : this.roadMat);
       mesh.rotation.x = -Math.PI / 2;
       if (isEw) mesh.rotation.z = Math.PI / 2;
       mesh.position.set((seg.x1 + seg.x2) / 2, isEw ? ROAD_Y + 0.005 : ROAD_Y, (seg.z1 + seg.z2) / 2);
       mesh.receiveShadow = true;
       this.scene.add(mesh);
+
+      // Raised Concrete Sidewalks (y = 0.16 top) flanking both sides of city streets!
+      if (seg.island !== 'airport') {
+        const swWidth = 3.8;
+        const offset = seg.width / 2 + swWidth / 2;
+        const cx = (seg.x1 + seg.x2) / 2;
+        const cz = (seg.z1 + seg.z2) / 2;
+        if (isEw) {
+          sidewalkTransforms.push(
+            { x: cx, z: cz - offset, sx: len, sz: swWidth },
+            { x: cx, z: cz + offset, sx: len, sz: swWidth }
+          );
+        } else {
+          sidewalkTransforms.push(
+            { x: cx - offset, z: cz, sx: swWidth, sz: len },
+            { x: cx + offset, z: cz, sx: swWidth, sz: len }
+          );
+        }
+      }
     }
 
-    // Zebra Crosswalks at key intersections (Instanced)
-    const cwGeo = new THREE.PlaneGeometry(13, 3.2);
+    if (sidewalkTransforms.length > 0) {
+      const swBoxGeo = new THREE.BoxGeometry(1, 0.16, 1);
+      const instSidewalks = new THREE.InstancedMesh(swBoxGeo, sidewalkMat, sidewalkTransforms.length);
+      instSidewalks.receiveShadow = true;
+      sidewalkTransforms.forEach((st, i) => {
+        _quat.identity();
+        _v1.set(st.x, LAND_Y + 0.08, st.z); // top surface strictly at y = 0.16
+        _v2.set(st.sx, 1, st.sz);
+        _mat4.compose(_v1, _quat, _v2);
+        instSidewalks.setMatrixAt(i, _mat4);
+      });
+      instSidewalks.instanceMatrix.needsUpdate = true;
+      instSidewalks.computeBoundingSphere();
+      this.scene.add(instSidewalks);
+    }
+
+    // Clean Intersection Asphalt Junction Pads (eliminates overlapping lane lines at crossroads)
+    const intPatchMat = new THREE.MeshStandardMaterial({
+      map: this.textures.intersectionAsphalt,
+      roughness: 0.78,
+      metalness: 0.06,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const allNsX = [-1400, -700, -525, 0, 175, 525, 700, 1225, 1400, 1660];
+    const allSouthZ = [552, 700, 1090, 1400, 1782, 2100, 2430];
+    const allNorthZ = [-2450, -2100, -1782, -1400, -1082, -700, -555];
+    const intCoords: Array<[number, number, number, number]> = [];
+    for (const rx of allNsX) {
+      const rw = rx === 0 ? 28 : rx === 1660 ? 16 : ROAD_X.includes(rx) ? 20 : 14;
+      for (const rz of allSouthZ) {
+        if (rx === 1660 && rz > 2550) continue;
+        if (rz === 1782 && rx > 250 && rx < 450) continue;
+        if (isWaterChannel(rx, rz)) continue;
+        const rh = rz === 1400 ? 26 : SOUTH_ROAD_Z.includes(rz) ? 20 : 14;
+        intCoords.push([rx, rz, rw, rh]);
+      }
+      for (const rz of allNorthZ) {
+        if (rx === 175 || rx === 1660 || rx > 1620) continue;
+        if (isWaterChannel(rx, rz)) continue;
+        const rh = rz === -1400 ? 26 : NORTH_ROAD_Z.includes(rz) ? 20 : 14;
+        intCoords.push([rx, rz, rw, rh]);
+      }
+    }
+    if (intCoords.length > 0) {
+      const intGeo = new THREE.PlaneGeometry(1, 1);
+      const instIntersections = new THREE.InstancedMesh(intGeo, intPatchMat, intCoords.length);
+      instIntersections.receiveShadow = true;
+      intCoords.forEach(([ix, iz, iw, ih], i) => {
+        _euler.set(-Math.PI / 2, 0, 0);
+        _quat.setFromEuler(_euler);
+        _v1.set(ix, ROAD_Y + 0.009, iz);
+        _v2.set(iw, ih, 1);
+        _mat4.compose(_v1, _quat, _v2);
+        instIntersections.setMatrixAt(i, _mat4);
+      });
+      instIntersections.instanceMatrix.needsUpdate = true;
+      instIntersections.computeBoundingSphere();
+      this.scene.add(instIntersections);
+    }
+
+    // Zebra Crosswalks at City Intersections (Instanced with polygonOffset)
+    const cwGeo = new THREE.PlaneGeometry(16, 4.0);
     const cwMat = new THREE.MeshStandardMaterial({
       map: this.textures.crosswalk,
       transparent: true,
       roughness: 0.82,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
     const cwPositions: Array<[number, number, number]> = [];
-    for (const rx of [-140, 0, 140]) {
-      for (const rz of [-280, -140, 140, 280]) {
-        cwPositions.push([rx, rz + 10.5, 0], [rx, rz - 10.5, 0], [rx + 10.5, rz, Math.PI / 2], [rx - 10.5, rz, Math.PI / 2]);
+    for (const rx of [-700, 0, 525, 700, 1225]) {
+      for (const rz of [-1400, -700, 700, 1090, 1400]) {
+        cwPositions.push([rx, rz + 13.5, 0], [rx, rz - 13.5, 0], [rx + 13.5, rz, Math.PI / 2], [rx - 13.5, rz, Math.PI / 2]);
       }
     }
     const instCrosswalks = new THREE.InstancedMesh(cwGeo, cwMat, cwPositions.length);
     cwPositions.forEach(([cx, cz, rotY], i) => {
       _euler.set(-Math.PI / 2, 0, rotY);
       _quat.setFromEuler(_euler);
-      _v1.set(cx, ROAD_Y + 0.012, cz);
+      _v1.set(cx, ROAD_Y + 0.015, cz);
       _v2.set(1, 1, 1);
       _mat4.compose(_v1, _quat, _v2);
       instCrosswalks.setMatrixAt(i, _mat4);
@@ -1016,8 +1210,14 @@ export class ViceCityEngine {
       this.scene.add(dockMesh);
     }
 
-    // 4. Leonida International Airport Runway, Helipad & Control Tower
-    this.buildAirportZone();
+    // 4. Both Fenced International Airports (Runways, Helipads, Towers, Ticket Desks & Jali Fence)
+    this.buildAirportZones();
+
+    // 4b. Vice Downtown Taxi Stand Shelter & Dispatch Kiosk
+    const taxiStandMesh = createTaxiStandMesh();
+    taxiStandMesh.position.set(TAXI_STAND.x, LAND_Y, TAXI_STAND.z);
+    this.scene.add(taxiStandMesh);
+    this.propColliders.push({ x: TAXI_STAND.x, z: TAXI_STAND.z, radius: 2.2 });
 
     // 5. Leonida Central Park City Garden & Kids Playground
     this.buildCentralParkGarden();
@@ -1072,48 +1272,14 @@ export class ViceCityEngine {
     }
 
     this.buildStreetLamps();
+    this.buildSidewalkPropsInstanced();
     this.buildGasAndFenceSpots();
 
     const heroAndCoreBuildings = this.worldBuildings.filter((b) => b.interior !== undefined);
     const skylineBuildings = this.worldBuildings.filter((b) => b.interior === undefined);
 
     if (skylineBuildings.length > 0) {
-      const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-      const skyMat = new THREE.MeshStandardMaterial({
-        map: this.textures.facadeModern,
-        normalMap: this.textures.concreteNormal,
-        normalScale: new THREE.Vector2(0.45, 0.45),
-        roughness: 0.38,
-        metalness: 0.45,
-      });
-      const instSky = new THREE.InstancedMesh(boxGeo, skyMat, skylineBuildings.length);
-      instSky.castShadow = !this.isSoftwareGl;
-      instSky.receiveShadow = true;
-
-      const crownMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.6 });
-      const instCrown = new THREE.InstancedMesh(boxGeo, crownMat, skylineBuildings.length);
-
-      for (let i = 0; i < skylineBuildings.length; i++) {
-        const b = skylineBuildings[i];
-        _v1.set(b.x, LAND_Y + b.h / 2, b.z);
-        _v2.set(b.w, b.h, b.d);
-        _quat.identity();
-        _mat4.compose(_v1, _quat, _v2);
-        instSky.setMatrixAt(i, _mat4);
-        _color.setHex(b.color);
-        instSky.setColorAt(i, _color);
-
-        _v1.set(b.x, LAND_Y + b.h + 1.2, b.z);
-        _v2.set(b.w * 0.62, 2.4, b.d * 0.62);
-        _mat4.compose(_v1, _quat, _v2);
-        instCrown.setMatrixAt(i, _mat4);
-      }
-      instSky.instanceMatrix.needsUpdate = true;
-      instCrown.instanceMatrix.needsUpdate = true;
-      if (instSky.instanceColor) instSky.instanceColor.needsUpdate = true;
-      instSky.computeBoundingSphere();
-      instCrown.computeBoundingSphere();
-      this.scene.add(instSky, instCrown);
+      this.buildInstancedSkyline(skylineBuildings, sidewalkMat);
     }
 
     this.buildEnterableShells(heroAndCoreBuildings);
@@ -1163,43 +1329,62 @@ export class ViceCityEngine {
     this.spawnWildlife();
   }
 
-  private buildAirportZone() {
-    const g = new THREE.Group();
-    const runway = new THREE.Mesh(
-      new THREE.PlaneGeometry(AIRPORT_ZONE.runwayLen, AIRPORT_ZONE.runwayW),
-      new THREE.MeshStandardMaterial({ map: this.textures.runway, roughness: 0.75 })
-    );
-    runway.rotation.x = -Math.PI / 2;
-    runway.position.set(AIRPORT_ZONE.runwayX, LAND_Y + 0.025, AIRPORT_ZONE.runwayZ);
-    g.add(runway);
+  private buildAirportZones() {
+    for (const az of AIRPORT_ZONES) {
+      const g = new THREE.Group();
+      const runway = new THREE.Mesh(
+        new THREE.PlaneGeometry(az.runwayLen, az.runwayW),
+        new THREE.MeshStandardMaterial({ map: this.textures.runway, roughness: 0.75 })
+      );
+      runway.rotation.x = -Math.PI / 2;
+      runway.position.set(az.runwayX, LAND_Y + 0.03, az.runwayZ);
+      g.add(runway);
 
-    const pad = new THREE.Mesh(
-      new THREE.CylinderGeometry(7.5, 7.5, 0.1, 24),
-      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 })
-    );
-    pad.position.set(AIRPORT_ZONE.helipadX, LAND_Y + 0.05, AIRPORT_ZONE.helipadZ);
-    const hRing = new THREE.Mesh(
-      new THREE.RingGeometry(5.6, 6.2, 24),
-      new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
-    );
-    hRing.rotation.x = -Math.PI / 2;
-    hRing.position.set(AIRPORT_ZONE.helipadX, LAND_Y + 0.11, AIRPORT_ZONE.helipadZ);
-    g.add(pad, hRing);
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(8.5, 8.5, 0.12, 24),
+        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 })
+      );
+      pad.position.set(az.helipadX, LAND_Y + 0.06, az.helipadZ);
+      const hRing = new THREE.Mesh(
+        new THREE.RingGeometry(6.4, 7.2, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+      );
+      hRing.rotation.x = -Math.PI / 2;
+      hRing.position.set(az.helipadX, LAND_Y + 0.13, az.helipadZ);
+      g.add(pad, hRing);
 
-    const towerShaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.2, 2.8, 26, 10),
-      new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.5 })
-    );
-    towerShaft.position.set(-465, LAND_Y + 13, -340);
-    const towerCab = new THREE.Mesh(
-      new THREE.CylinderGeometry(4.5, 3.4, 4.2, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65, roughness: 0.1 })
-    );
-    towerCab.position.set(-465, LAND_Y + 27.5, -340);
-    g.add(towerShaft, towerCab);
-    this.propColliders.push({ x: -465, z: -340, radius: 3.0 });
+      const towerShaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.4, 3.0, 28, 10),
+        new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.5 })
+      );
+      towerShaft.position.set(az.towerX, LAND_Y + 14, az.towerZ);
+      const towerCab = new THREE.Mesh(
+        new THREE.CylinderGeometry(4.8, 3.6, 4.4, 12),
+        new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65, roughness: 0.1 })
+      );
+      towerCab.position.set(az.towerX, LAND_Y + 29.5, az.towerZ);
+      g.add(towerShaft, towerCab);
+      this.propColliders.push({ x: az.towerX, z: az.towerZ, radius: 3.2 });
 
-    this.scene.add(g);
+      const fenceGroup = createAirportFenceAndGateMesh(
+        az.fenceMinX,
+        az.fenceMaxX,
+        az.fenceMinZ,
+        az.fenceMaxZ,
+        az.gateX,
+        az.gateZ,
+        az.gateWidth
+      );
+      fenceGroup.position.y = LAND_Y;
+      g.add(fenceGroup);
+
+      const ticketDesk = createAirportTicketCounterMesh();
+      ticketDesk.position.set(az.ticketX, LAND_Y, az.ticketZ);
+      g.add(ticketDesk);
+      this.propColliders.push({ x: az.ticketX, z: az.ticketZ, radius: 2.2 });
+
+      this.scene.add(g);
+    }
   }
 
   private buildCentralParkGarden() {
@@ -1263,6 +1448,168 @@ export class ViceCityEngine {
     this.scene.add(parkGroup);
   }
 
+  private buildInstancedSkyline(skylineBuildings: BuildingFootprint[], sidewalkMat: THREE.Material) {
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const groups: Array<{
+      list: BuildingFootprint[];
+      mat: THREE.MeshStandardMaterial;
+      hasSetback: boolean;
+      hasNeonTrim: boolean;
+      hasPitchedRoof: boolean;
+    }> = [
+      {
+        list: skylineBuildings.filter((b) => b.archStyle === 'glass_tower'),
+        mat: new THREE.MeshStandardMaterial({
+          map: this.textures.facadeModern,
+          normalMap: this.textures.concreteNormal,
+          normalScale: new THREE.Vector2(0.45, 0.45),
+          roughness: 0.34,
+          metalness: 0.5,
+        }),
+        hasSetback: true,
+        hasNeonTrim: false,
+        hasPitchedRoof: false,
+      },
+      {
+        list: skylineBuildings.filter((b) => b.archStyle === 'art_deco'),
+        mat: new THREE.MeshStandardMaterial({
+          map: this.textures.facadeDeco,
+          normalMap: this.textures.concreteNormal,
+          normalScale: new THREE.Vector2(0.4, 0.4),
+          roughness: 0.56,
+          metalness: 0.14,
+        }),
+        hasSetback: false,
+        hasNeonTrim: true,
+        hasPitchedRoof: false,
+      },
+      {
+        list: skylineBuildings.filter((b) => b.archStyle === 'suburban_house'),
+        mat: new THREE.MeshStandardMaterial({
+          map: this.textures.villaStucco,
+          roughness: 0.78,
+          metalness: 0.04,
+        }),
+        hasSetback: false,
+        hasNeonTrim: false,
+        hasPitchedRoof: true,
+      },
+      {
+        list: skylineBuildings.filter(
+          (b) => b.archStyle !== 'glass_tower' && b.archStyle !== 'art_deco' && b.archStyle !== 'suburban_house'
+        ),
+        mat: new THREE.MeshStandardMaterial({
+          map: this.textures.facadeWarm,
+          normalMap: this.textures.concreteNormal,
+          normalScale: new THREE.Vector2(0.45, 0.45),
+          roughness: 0.65,
+          metalness: 0.1,
+        }),
+        hasSetback: false,
+        hasNeonTrim: false,
+        hasPitchedRoof: false,
+      },
+    ];
+
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.6 });
+    const neonTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xff4d88,
+      emissive: 0xff4d88,
+      emissiveIntensity: 1.25,
+      roughness: 0.3,
+    });
+    const pitchedRoofMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.72 });
+    const roofGeo = new THREE.ConeGeometry(0.75, 1, 4);
+
+    // Concrete sidewalk plaza apron beneath every building
+    const padInst = new THREE.InstancedMesh(boxGeo, sidewalkMat, skylineBuildings.length);
+    padInst.receiveShadow = true;
+    skylineBuildings.forEach((b, i) => {
+      _quat.identity();
+      _v1.set(b.x, LAND_Y + 0.07, b.z);
+      _v2.set(b.w + 8, 0.14, b.d + 8);
+      _mat4.compose(_v1, _quat, _v2);
+      padInst.setMatrixAt(i, _mat4);
+    });
+    padInst.instanceMatrix.needsUpdate = true;
+    padInst.computeBoundingSphere();
+    this.scene.add(padInst);
+
+    for (const grp of groups) {
+      if (grp.list.length === 0) continue;
+      const inst = new THREE.InstancedMesh(boxGeo, grp.mat, grp.list.length);
+      inst.castShadow = !this.isSoftwareGl;
+      inst.receiveShadow = true;
+
+      const crowns = new THREE.InstancedMesh(boxGeo, grp.hasNeonTrim ? neonTrimMat : crownMat, grp.list.length);
+      const roofs = grp.hasPitchedRoof ? new THREE.InstancedMesh(roofGeo, pitchedRoofMat, grp.list.length) : null;
+      const tiers = grp.hasSetback ? new THREE.InstancedMesh(boxGeo, grp.mat, grp.list.length) : null;
+
+      grp.list.forEach((b, i) => {
+        _quat.identity();
+        const mainH = grp.hasSetback ? b.h * 0.72 : b.h;
+        _v1.set(b.x, LAND_Y + mainH / 2, b.z);
+        _v2.set(b.w, mainH, b.d);
+        _mat4.compose(_v1, _quat, _v2);
+        inst.setMatrixAt(i, _mat4);
+        _color.setHex(b.color);
+        inst.setColorAt(i, _color);
+
+        if (tiers) {
+          const upperH = b.h * 0.28;
+          _v1.set(b.x, LAND_Y + mainH + upperH / 2, b.z);
+          _v2.set(b.w * 0.68, upperH, b.d * 0.68);
+          _mat4.compose(_v1, _quat, _v2);
+          tiers.setMatrixAt(i, _mat4);
+          tiers.setColorAt(i, _color);
+        }
+
+        if (grp.hasNeonTrim) {
+          _v1.set(b.x, LAND_Y + b.h + 0.22, b.z);
+          _v2.set(b.w + 0.45, 0.42, b.d + 0.45);
+          _mat4.compose(_v1, _quat, _v2);
+          crowns.setMatrixAt(i, _mat4);
+          _color.setHex(i % 2 === 0 ? 0xff4d88 : 0x2dd4bf);
+          crowns.setColorAt(i, _color);
+        } else {
+          _v1.set(b.x, LAND_Y + b.h + 0.9, b.z);
+          _v2.set(b.w * 0.42, 1.8, b.d * 0.42);
+          _mat4.compose(_v1, _quat, _v2);
+          crowns.setMatrixAt(i, _mat4);
+        }
+
+        if (roofs) {
+          _euler.set(0, Math.PI / 4, 0);
+          _quat.setFromEuler(_euler);
+          _v1.set(b.x, LAND_Y + b.h + 1.4, b.z);
+          _v2.set(b.w * 1.04, 2.8, b.d * 1.04);
+          _mat4.compose(_v1, _quat, _v2);
+          roofs.setMatrixAt(i, _mat4);
+        }
+      });
+
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      inst.computeBoundingSphere();
+      crowns.instanceMatrix.needsUpdate = true;
+      if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+      crowns.computeBoundingSphere();
+      this.scene.add(inst, crowns);
+
+      if (tiers) {
+        tiers.instanceMatrix.needsUpdate = true;
+        if (tiers.instanceColor) tiers.instanceColor.needsUpdate = true;
+        tiers.computeBoundingSphere();
+        this.scene.add(tiers);
+      }
+      if (roofs) {
+        roofs.instanceMatrix.needsUpdate = true;
+        roofs.computeBoundingSphere();
+        this.scene.add(roofs);
+      }
+    }
+  }
+
   private buildStreetLamps() {
     const poleGeo = new THREE.CylinderGeometry(0.08, 0.12, 5.4, 8);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
@@ -1270,12 +1617,24 @@ export class ViceCityEngine {
     const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xfbbf24, emissiveIntensity: 1.4 });
 
     const coords: [number, number][] = [];
-    for (const rx of ROAD_X) {
-      for (const rz of ROAD_Z) {
-        if (isWaterChannel(rx - 10.5, rz - 10.5)) continue;
-        coords.push([rx - 10.5, rz - 10.5]);
+    for (const seg of ROAD_SEGMENTS) {
+      if (seg.island === 'airport') continue;
+      const dx = seg.x2 - seg.x1;
+      const dz = seg.z2 - seg.z1;
+      const len = Math.hypot(dx, dz);
+      const isEw = Math.abs(dx) > Math.abs(dz);
+      const step = 125;
+      const count = Math.floor(len / step);
+      for (let s = 1; s < count; s++) {
+        const t = s / count;
+        const px = seg.x1 + dx * t + (isEw ? 0 : seg.width / 2 + 1.2);
+        const pz = seg.z1 + dz * t + (isEw ? seg.width / 2 + 1.2 : 0);
+        if (isWaterChannel(px, pz)) continue;
+        if (this.worldBuildings.some((b) => Math.abs(b.x - px) < b.w / 2 + 2 && Math.abs(b.z - pz) < b.d / 2 + 2)) continue;
+        coords.push([px, pz]);
       }
     }
+    if (coords.length === 0) return;
     const poles = new THREE.InstancedMesh(poleGeo, poleMat, coords.length);
     const bulbs = new THREE.InstancedMesh(bulbGeo, bulbMat, coords.length);
     coords.forEach(([lx, lz], i) => {
@@ -1294,6 +1653,88 @@ export class ViceCityEngine {
     poles.computeBoundingSphere();
     bulbs.computeBoundingSphere();
     this.scene.add(poles, bulbs);
+  }
+
+  private buildSidewalkPropsInstanced() {
+    // Instanced Bushes/Hedges, Fire Hydrants & Sidewalk Benches across Downtown, Villa & Ocean Drive
+    const bushGeo = new THREE.DodecahedronGeometry(0.85, 0);
+    const bushMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.85 });
+    const hydrantGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.78, 8);
+    const hydrantMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35, metalness: 0.35 });
+    const benchGeo = new THREE.BoxGeometry(2.1, 0.48, 0.65);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x7c4a26, roughness: 0.72 });
+
+    const bushCoords: Array<[number, number, number]> = [];
+    const hydrantCoords: Array<[number, number]> = [];
+    const benchCoords: Array<[number, number, number]> = [];
+
+    for (const seg of ROAD_SEGMENTS) {
+      if (seg.island === 'airport') continue;
+      const dx = seg.x2 - seg.x1;
+      const dz = seg.z2 - seg.z1;
+      const len = Math.hypot(dx, dz);
+      const isEw = Math.abs(dx) > Math.abs(dz);
+      const step = 150;
+      const count = Math.floor(len / step);
+      for (let s = 1; s < count; s++) {
+        const t = (s + 0.35) / count;
+        if (t >= 0.96) continue;
+        const bx = seg.x1 + dx * t + (isEw ? 0 : -(seg.width / 2 + 2.2));
+        const bz = seg.z1 + dz * t + (isEw ? -(seg.width / 2 + 2.2) : 0);
+        if (isWaterChannel(bx, bz)) continue;
+        bushCoords.push([bx, bz, 0.9 + (s % 3) * 0.2]);
+        if (s % 2 === 0) {
+          hydrantCoords.push([bx + (isEw ? 6 : 0), bz + (isEw ? 0 : 6)]);
+        } else {
+          benchCoords.push([bx + (isEw ? 6 : 0), bz + (isEw ? 0 : 6), isEw ? 0 : Math.PI / 2]);
+        }
+      }
+    }
+
+    if (bushCoords.length > 0) {
+      const bushes = new THREE.InstancedMesh(bushGeo, bushMat, bushCoords.length);
+      bushes.castShadow = !this.isSoftwareGl;
+      bushes.receiveShadow = true;
+      bushCoords.forEach(([x, z, sc], i) => {
+        _quat.identity();
+        _v1.set(x, LAND_Y + 0.55 * sc, z);
+        _v2.set(sc * 1.25, sc * 0.85, sc * 1.25);
+        _mat4.compose(_v1, _quat, _v2);
+        bushes.setMatrixAt(i, _mat4);
+      });
+      bushes.instanceMatrix.needsUpdate = true;
+      bushes.computeBoundingSphere();
+      this.scene.add(bushes);
+    }
+
+    if (hydrantCoords.length > 0) {
+      const hydrants = new THREE.InstancedMesh(hydrantGeo, hydrantMat, hydrantCoords.length);
+      hydrantCoords.forEach(([x, z], i) => {
+        _quat.identity();
+        _v1.set(x, LAND_Y + 0.48, z);
+        _v2.set(1, 1, 1);
+        _mat4.compose(_v1, _quat, _v2);
+        hydrants.setMatrixAt(i, _mat4);
+      });
+      hydrants.instanceMatrix.needsUpdate = true;
+      hydrants.computeBoundingSphere();
+      this.scene.add(hydrants);
+    }
+
+    if (benchCoords.length > 0) {
+      const benches = new THREE.InstancedMesh(benchGeo, benchMat, benchCoords.length);
+      benchCoords.forEach(([x, z, rotY], i) => {
+        _euler.set(0, rotY, 0);
+        _quat.setFromEuler(_euler);
+        _v1.set(x, LAND_Y + 0.4, z);
+        _v2.set(1, 1, 1);
+        _mat4.compose(_v1, _quat, _v2);
+        benches.setMatrixAt(i, _mat4);
+      });
+      benches.instanceMatrix.needsUpdate = true;
+      benches.computeBoundingSphere();
+      this.scene.add(benches);
+    }
   }
 
   private buildGasAndFenceSpots() {
@@ -1463,6 +1904,41 @@ export class ViceCityEngine {
       );
       neonBar.position.set(0, 3.55, d / 2 + 0.1);
       shellGroup.add(neonBar);
+
+      // Crisp Concrete Front Sidewalk Plaza Pad around every store/villa
+      const frontPlaza = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 6, 0.14, d + 7),
+        new THREE.MeshStandardMaterial({ map: this.textures.sidewalk, roughness: 0.85 })
+      );
+      frontPlaza.position.set(0, 0.06, 1.5);
+      frontPlaza.receiveShadow = true;
+      shellGroup.add(frontPlaza);
+
+      // Glowing Readable 3D Storefront Sign on Hero Shops & Landmarks
+      if (isHero) {
+        const signConfigMap: Record<string, { t: string; s: string; bg: string; ac: string }> = {
+          burgershot: { t: 'BURGER SHOT', s: 'BLEEDER BURGERS · HIRING RIDERS', bg: '#b91c1c', ac: '#facc15' },
+          gunshop: { t: 'AMMU-NATION', s: 'VICE ARMORY · 9 WEAPONS', bg: '#7f1d1d', ac: '#f97316' },
+          mart: { t: '24/7 OCEAN MART', s: 'OPEN ALL NIGHT · ATM INSIDE', bg: '#047857', ac: '#fbbf24' },
+          bank: { t: 'RESERVE BANK', s: 'LEONIDA VAULT & BUSINESSES', bg: '#1e3a8a', ac: '#38bdf8' },
+          clothes: { t: 'VICE THREADS', s: 'DESIGNER OUTFITS & STYLE', bg: '#831843', ac: '#f472b6' },
+          dealership: { t: 'EXOTIC MOTORS', s: 'SUPERCARS · BIKES · MODS', bg: '#0f172a', ac: '#2dd4bf' },
+          precinct: { t: 'VICE PD', s: 'CENTRAL POLICE PRECINCT', bg: '#1e3a8a', ac: '#60a5fa' },
+          safehouse: { t: "JASON'S VILLA", s: 'OCEAN VIEW SAFEHOUSE', bg: '#312e81', ac: '#fbbf24' },
+          jewelry: { t: 'VANGELICO', s: 'FINE DIAMONDS & WATCHES', bg: '#3b0764', ac: '#e879f9' },
+          mall: { t: 'VICE GALLERIA', s: 'MEGA-MALL & ARCADE', bg: '#0369a1', ac: '#38bdf8' },
+          gym: { t: 'VICE IRON GYM', s: 'MUSCLE & BOXING CLUB', bg: '#991b1b', ac: '#f87171' },
+          club: { t: 'CLUB MALIBU', s: 'NEON NIGHTLIFE & VIP', bg: '#701a75', ac: '#22d3ee' },
+          coffee: { t: 'VICE ROAST', s: 'CUBAN ESPRESSO & CAFE', bg: '#451a03', ac: '#fbbf24' },
+          bar: { t: 'NEON ANCHOR', s: 'CRAFT BEER & 8-BALL', bg: '#1e1b4b', ac: '#ec4899' },
+          pawn: { t: 'UNCLE JACK PAWN', s: 'CHOP GEAR & KEY CLONER', bg: '#422006', ac: '#f59e0b' },
+          airport: { t: 'VICE INTL', s: 'CHARTER FLIGHTS & RUNWAY', bg: '#0c4a6e', ac: '#38bdf8' },
+        };
+        const sc = signConfigMap[info.kind] ?? { t: info.name.slice(0, 16), s: info.district, bg: '#1e293b', ac: '#38bdf8' };
+        const signMesh = createStorefrontSignMesh(sc.t, sc.s, sc.bg, sc.ac, Math.min(12.5, Math.max(7.2, w * 0.58)));
+        signMesh.position.set(0, Math.min(h - 1.1, 5.15), d / 2 + 0.28);
+        shellGroup.add(signMesh);
+      }
 
       const interiorGroup = new THREE.Group();
       this.populateInteriorFurniture(interiorGroup, info, isHero);
@@ -1669,64 +2145,96 @@ export class ViceCityEngine {
       dir?: number;
       axis?: 'z' | 'x';
     }> = [
-      // Jason's Driveway outside Jason's Villa (210, 210)
-      { name: 'Jason Sabre Turbo', tier: 'muscle', fuelType: 'petrol', color: '#e63946', x: 207, z: 229, yaw: Math.PI },
-      { name: 'Vice Nagasaki Sport Bike', tier: 'bike', fuelType: 'petrol', color: '#2dd4bf', x: 215, z: 229, yaw: Math.PI },
-      // South & North Island Motorcycles & Supercars
-      { name: 'Bati 801RR Superbike', tier: 'bike', fuelType: 'petrol', color: '#f59e0b', x: 52, z: 125, yaw: 0 },
-      { name: 'Pegassi Chopper Bike', tier: 'bike', fuelType: 'petrol', color: '#a855f7', x: -195, z: 228, yaw: Math.PI / 2 },
-      { name: 'Grotti Cheetah Carbon', tier: 'luxury', fuelType: 'petrol', color: '#f59e0b', x: 295, z: 195, yaw: 0 },
-      { name: 'Pegassi Zentorno EV', tier: 'luxury', fuelType: 'ev', color: '#06b6d4', x: 70, z: -186, yaw: Math.PI / 2 },
-      { name: 'Dewbauchee Vice EV', tier: 'luxury', fuelType: 'ev', color: '#ec4899', x: 24, z: 162, yaw: 0 },
-      { name: 'Bravado Gauntlet Hellfire', tier: 'muscle', fuelType: 'petrol', color: '#7c3aed', x: 185, z: 265, yaw: 0 },
-      { name: 'Vice Cab Taxi', tier: 'taxi', fuelType: 'petrol', color: '#facc15', x: 22, z: 256, yaw: Math.PI / 2 },
-      { name: 'Sandking Pickup 4x4', tier: 'pickup', fuelType: 'petrol', color: '#16a34a', x: -195, z: -230, yaw: 0 },
-      { name: 'Dundreary Landstalker SUV', tier: 'suv', fuelType: 'petrol', color: '#334155', x: -240, z: 260, yaw: Math.PI },
-      { name: 'Obey Tailgater EV', tier: 'sedan', fuelType: 'ev', color: '#e2e8f0', x: 210, z: -230, yaw: 0 },
-      { name: 'Vapid Dominator Classic', tier: 'classic', fuelType: 'petrol', color: '#2563eb', x: -245, z: 122, yaw: 0 },
-      // Vice PD Central Precinct Cruisers (-70, 210)!
-      { name: 'Vice PD Precinct Cruiser 1', tier: 'police', fuelType: 'petrol', color: '#111827', x: -84, z: 228, yaw: Math.PI, isPrecinctUnit: true },
-      { name: 'Vice PD Precinct Cruiser 2', tier: 'police', fuelType: 'petrol', color: '#111827', x: -56, z: 228, yaw: Math.PI, isPrecinctUnit: true },
-      // Port Vice, Northport & Island Speedboats
-      { name: 'Vice Marquis Speedboat', tier: 'boat', fuelType: 'petrol', color: '#f8fafc', x: 396, z: 348, yaw: Math.PI / 2 },
-      { name: 'Channel Cruiser Speedboat', tier: 'boat', fuelType: 'ev', color: '#fb923c', x: 84, z: -68, yaw: Math.PI / 2 },
-      { name: 'Paradise Key Yacht Tender', tier: 'boat', fuelType: 'petrol', color: '#38bdf8', x: 462, z: 240, yaw: -Math.PI / 2 },
-      { name: 'Starlight Jet Boat', tier: 'boat', fuelType: 'ev', color: '#f43f5e', x: 462, z: -240, yaw: -Math.PI / 2 },
-      // Leonida International Airport Helicopter & Airplanes (-440, -385)!
-      { name: 'Vice News Maverick Helicopter', tier: 'heli', fuelType: 'aviation', color: '#2563eb', x: AIRPORT_ZONE.helipadX, z: AIRPORT_ZONE.helipadZ, yaw: 0 },
-      { name: 'Dodo Prop Charter Plane', tier: 'plane', fuelType: 'aviation', color: '#f8fafc', x: AIRPORT_ZONE.runwayX - 45, z: AIRPORT_ZONE.runwayZ, yaw: Math.PI / 2 },
-      { name: 'Mammatus Stunt Plane', tier: 'plane', fuelType: 'aviation', color: '#ef4444', x: AIRPORT_ZONE.runwayX + 42, z: AIRPORT_ZONE.runwayZ, yaw: Math.PI / 2 },
-      // Ambient City & Over-Water Highway Bridge Traffic Cruisers!
-      { name: 'Imponte Ruiner', tier: 'muscle', fuelType: 'petrol', color: '#10b981', x: 4.5, z: 180, yaw: 0, isTraffic: true, dir: -1, axis: 'z' },
-      { name: 'Albany Cavalcade', tier: 'suv', fuelType: 'petrol', color: '#475569', x: -4.5, z: -180, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
-      { name: 'Karin Asterope', tier: 'sedan', fuelType: 'ev', color: '#94a3b8', x: -135, z: 220, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
-      { name: 'Vice Yellow Cab', tier: 'taxi', fuelType: 'petrol', color: '#eab308', x: -160, z: 144, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
-      { name: 'Vapid Bobcat Pickup', tier: 'pickup', fuelType: 'petrol', color: '#dc2626', x: 180, z: -144, yaw: -Math.PI / 2, isTraffic: true, dir: -1, axis: 'x' },
-      { name: 'Highway Patrol Cruiser', tier: 'police', fuelType: 'petrol', color: '#111827', x: 144, z: 265, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      // Jason's Villa Driveway (1050, 1050)
+      { name: 'Jason Sabre Turbo', tier: 'muscle', fuelType: 'petrol', color: '#e63946', x: 1047, z: 1072, yaw: Math.PI },
+      { name: 'Vice Nagasaki Sport Bike', tier: 'sportbike', fuelType: 'petrol', color: '#2dd4bf', x: 1056, z: 1072, yaw: Math.PI },
+      { name: 'Vice Scooty Zip 110', tier: 'scooty', fuelType: 'ev', color: '#f97316', x: 1063, z: 1072, yaw: Math.PI },
+      // South & North Island Motorcycles, Scooty, Cars & Trucks
+      { name: 'Bati 801RR Superbike', tier: 'sportbike', fuelType: 'petrol', color: '#f59e0b', x: 355, z: 1068, yaw: 0 },
+      { name: 'Pegassi Chopper Bike', tier: 'bike', fuelType: 'petrol', color: '#a855f7', x: -1050, z: 1075, yaw: Math.PI / 2 },
+      { name: 'City Commuter Scooty', tier: 'scooty', fuelType: 'ev', color: '#38bdf8', x: 365, z: 542, yaw: 0 },
+      { name: 'Grotti Cheetah Carbon', tier: 'luxury', fuelType: 'petrol', color: '#f59e0b', x: 1555, z: 1070, yaw: 0 },
+      { name: 'Pegassi Zentorno EV', tier: 'luxury', fuelType: 'ev', color: '#06b6d4', x: 350, z: -1022, yaw: Math.PI / 2 },
+      { name: 'Dewbauchee Vice EV', tier: 'luxury', fuelType: 'ev', color: '#ec4899', x: 35, z: 720, yaw: 0 },
+      { name: 'Bravado Gauntlet Hellfire', tier: 'muscle', fuelType: 'petrol', color: '#7c3aed', x: 1030, z: 1765, yaw: 0 },
+      { name: 'Vice Cab Taxi Stand Unit', tier: 'taxi', fuelType: 'petrol', color: '#facc15', x: TAXI_STAND.x + 10, z: TAXI_STAND.z + 4, yaw: Math.PI / 2 },
+      { name: 'Sandking Pickup 4x4', tier: 'pickup', fuelType: 'petrol', color: '#16a34a', x: -1045, z: -1072, yaw: 0 },
+      { name: 'Jobuilt Phantom Cargo Truck', tier: 'truck', fuelType: 'petrol', color: '#b91c1c', x: 1280, z: 1840, yaw: -Math.PI / 2 },
+      { name: 'MTL Packer Heavy Truck', tier: 'truck', fuelType: 'petrol', color: '#1d4ed8', x: -1205, z: -875, yaw: Math.PI / 2 },
+      { name: 'Dundreary Landstalker SUV', tier: 'suv', fuelType: 'petrol', color: '#334155', x: -1040, z: 1775, yaw: Math.PI },
+      { name: 'Obey Tailgater EV', tier: 'sedan', fuelType: 'ev', color: '#e2e8f0', x: 1050, z: -1730, yaw: 0 },
+      { name: 'Vapid Dominator Classic', tier: 'classic', fuelType: 'petrol', color: '#2563eb', x: -1050, z: 1418, yaw: 0 },
+      // Vice PD Central Precinct Cruisers (-350, 1050)
+      { name: 'Vice PD Precinct Cruiser 1', tier: 'police', fuelType: 'petrol', color: '#111827', x: -366, z: 1072, yaw: Math.PI, isPrecinctUnit: true },
+      { name: 'Vice PD Precinct Cruiser 2', tier: 'police', fuelType: 'petrol', color: '#111827', x: -334, z: 1072, yaw: Math.PI, isPrecinctUnit: true },
+      // Port Vice, Northport & Offshore Island Speedboats
+      { name: 'Vice Marquis Speedboat', tier: 'boat', fuelType: 'petrol', color: '#f8fafc', x: 1848, z: 1750, yaw: Math.PI / 2 },
+      { name: 'Channel Cruiser Speedboat', tier: 'boat', fuelType: 'ev', color: '#fb923c', x: 330, z: -365, yaw: 0 },
+      { name: 'Paradise Key Yacht Tender', tier: 'boat', fuelType: 'petrol', color: '#38bdf8', x: 2378, z: 1100, yaw: -Math.PI / 2 },
+      { name: 'Starlight Jet Boat', tier: 'boat', fuelType: 'ev', color: '#f43f5e', x: 2378, z: -1100, yaw: -Math.PI / 2 },
+      // Both International Airports: Helicopters & Airplanes
+      { name: 'South Vice Maverick Helicopter', tier: 'heli', fuelType: 'aviation', color: '#2563eb', x: AIRPORT_ZONES[0].helipadX, z: AIRPORT_ZONES[0].helipadZ, yaw: 0 },
+      { name: 'South Vice Charter Jet', tier: 'plane', fuelType: 'aviation', color: '#f8fafc', x: AIRPORT_ZONES[0].runwayX - 95, z: AIRPORT_ZONES[0].runwayZ, yaw: Math.PI / 2 },
+      { name: 'South Vice Stunt Plane', tier: 'plane', fuelType: 'aviation', color: '#ef4444', x: AIRPORT_ZONES[0].runwayX + 85, z: AIRPORT_ZONES[0].runwayZ, yaw: Math.PI / 2 },
+      { name: 'Northport News Helicopter', tier: 'heli', fuelType: 'aviation', color: '#0ea5e9', x: AIRPORT_ZONES[1].helipadX, z: AIRPORT_ZONES[1].helipadZ, yaw: 0 },
+      { name: 'Northport Dodo Charter', tier: 'plane', fuelType: 'aviation', color: '#f8fafc', x: AIRPORT_ZONES[1].runwayX - 95, z: AIRPORT_ZONES[1].runwayZ, yaw: Math.PI / 2 },
+      { name: 'Northport Mammatus Plane', tier: 'plane', fuelType: 'aviation', color: '#f59e0b', x: AIRPORT_ZONES[1].runwayX + 85, z: AIRPORT_ZONES[1].runwayZ, yaw: Math.PI / 2 },
+      // 5x City & Grand Over-Water Highway Bridge Traffic
+      { name: 'Imponte Ruiner', tier: 'muscle', fuelType: 'petrol', color: '#10b981', x: 6.5, z: 950, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      { name: 'Albany Cavalcade', tier: 'suv', fuelType: 'petrol', color: '#475569', x: -6.5, z: -950, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Hauler Bridge Cargo Truck', tier: 'truck', fuelType: 'petrol', color: '#0f766e', x: 6.5, z: 240, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Karin Asterope', tier: 'sedan', fuelType: 'ev', color: '#94a3b8', x: -700, z: 1200, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Vice Yellow Cab', tier: 'taxi', fuelType: 'petrol', color: '#eab308', x: -450, z: 1406, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
+      { name: 'Vapid Bobcat Pickup', tier: 'pickup', fuelType: 'petrol', color: '#dc2626', x: 480, z: -1406, yaw: -Math.PI / 2, isTraffic: true, dir: -1, axis: 'x' },
+      { name: 'Highway Patrol Cruiser', tier: 'police', fuelType: 'petrol', color: '#111827', x: 700, z: 1580, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Northport Sportbike Cruiser', tier: 'sportbike', fuelType: 'petrol', color: '#f43f5e', x: 700, z: -1200, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      // Dense Vice Downtown, Ocean Drive, Villa Boulevard & Northport Live Traffic
+      { name: 'Benefactor Schafter', tier: 'sedan', fuelType: 'petrol', color: '#1e293b', x: 521.8, z: 920, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Declasse Vigero', tier: 'muscle', fuelType: 'petrol', color: '#ea580c', x: 528.2, z: 1280, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      { name: 'Vice Metro Cab', tier: 'taxi', fuelType: 'petrol', color: '#facc15', x: 310, z: 1093.2, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
+      { name: 'Pegassi Infernus EV', tier: 'luxury', fuelType: 'ev', color: '#06b6d4', x: 780, z: 1086.8, yaw: -Math.PI / 2, isTraffic: true, dir: -1, axis: 'x' },
+      { name: 'Gallivanter Baller SUV', tier: 'suv', fuelType: 'petrol', color: '#f8fafc', x: 1221.8, z: 960, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Bravado Banshee', tier: 'luxury', fuelType: 'petrol', color: '#2563eb', x: 1228.2, z: 1310, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      { name: 'Ocean Drive Taxi', tier: 'taxi', fuelType: 'petrol', color: '#eab308', x: 1656.5, z: 1120, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Shitzu PCJ-600', tier: 'sportbike', fuelType: 'petrol', color: '#22c55e', x: 1663.5, z: 1460, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      { name: 'Vapid Sadler Pickup', tier: 'pickup', fuelType: 'petrol', color: '#b45309', x: 171.8, z: 1160, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Vice Transit Hauler', tier: 'truck', fuelType: 'petrol', color: '#0284c7', x: 940, z: 1406, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
+      { name: 'Downtown Patrol Unit', tier: 'police', fuelType: 'petrol', color: '#111827', x: -180, z: 705, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
+      { name: 'Beachside Classic Cruiser', tier: 'classic', fuelType: 'petrol', color: '#f472b6', x: 1140, z: 1785, yaw: -Math.PI / 2, isTraffic: true, dir: -1, axis: 'x' },
+      { name: 'Vice Avenue Commuter', tier: 'sedan', fuelType: 'ev', color: '#64748b', x: -528.2, z: 1240, yaw: Math.PI, isTraffic: true, dir: -1, axis: 'z' },
+      { name: 'Northport Boulevard SUV', tier: 'suv', fuelType: 'petrol', color: '#0f172a', x: 420, z: -1078.8, yaw: Math.PI / 2, isTraffic: true, dir: 1, axis: 'x' },
+      { name: 'Northport Bay Cruiser', tier: 'muscle', fuelType: 'petrol', color: '#7c3aed', x: 521.8, z: -980, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
+      { name: 'Grand Bridge Express', tier: 'luxury', fuelType: 'ev', color: '#f59e0b', x: -6.5, z: 180, yaw: 0, isTraffic: true, dir: 1, axis: 'z' },
     ];
 
     presets.forEach((p, idx) => {
       const rig = createVehicleRig(p.tier, p.color, this.textures.contactShadow, this.isSoftwareGl);
-      const startY = p.tier === 'boat' ? -0.15 : getTerrainHeightAt(p.x, p.z);
+      const startY = p.tier === 'boat' ? -0.45 : getTerrainHeightAt(p.x, p.z);
       rig.root.position.set(p.x, startY, p.z);
       rig.root.rotation.y = p.yaw;
       this.scene.add(rig.root);
 
       const maxSpeed =
         p.tier === 'plane'
-          ? 74
+          ? 78
           : p.tier === 'heli'
+          ? 56
+          : p.tier === 'sportbike'
           ? 54
           : p.tier === 'luxury'
-          ? 48
+          ? 49
           : p.tier === 'bike'
           ? 46
           : p.tier === 'muscle'
           ? 42
           : p.tier === 'police'
           ? 41
+          : p.tier === 'truck'
+          ? 34
+          : p.tier === 'scooty'
+          ? 30
           : p.tier === 'boat'
-          ? 32
+          ? 34
           : 35;
 
       const state: VehicleState = {
@@ -1740,7 +2248,7 @@ export class ViceCityEngine {
         maxHealth: 100,
         speed: 0,
         maxSpeed,
-        hotwired: idx <= 3 || p.tier === 'boat' || p.tier === 'heli' || p.tier === 'plane',
+        hotwired: idx <= 4 || p.tier === 'boat' || p.tier === 'heli' || p.tier === 'plane' || p.tier === 'scooty',
         needsKeyCloner: p.tier === 'luxury',
         gpsTrackerActive: false,
         gpsTimer: 60,
@@ -1799,16 +2307,32 @@ export class ViceCityEngine {
     const archetypes = ['Vice Local', 'Beach Tourist', 'Club Promoter', 'Street Racer', 'Shopper', 'Financier'];
     const shirts = [0xe11d48, 0x0284c7, 0x16a34a, 0xd97706, 0x7c3aed, 0x0d9488];
 
-    // 32 City Pedestrians split cleanly between Vice Downtown & Northport sidewalks!
-    for (let i = 0; i < 32; i++) {
-      const onNorth = i % 2 === 1;
-      let x = ((i * 113) % 560) - 280;
-      let z = onNorth ? -120 - ((i * 73) % 340) : 115 + ((i * 73) % 340);
-      if (this.collidesWithSolidWall(x, z, 0.8)) {
-        x += 18;
-        z += 12;
+    // 56 City Pedestrians distributed across Vice Downtown, Northport & Paleto Suburbs
+    // Plus 14 dedicated sidewalk locals near Burger Shot, Jason's Villa, Central Park & Ocean Drive
+    const hotspotWalkers: Array<[number, number]> = [
+      [340, 1081], [368, 1081], [420, 1099], [490, 1081],
+      [540, 1120], [820, 1081], [1025, 1081], [1072, 1081],
+      [1210, 1110], [1645, 1060], [-335, 1081], [320, 1690],
+      [380, 1715], [355, -1072],
+    ];
+    const totalPeds = 56 + hotspotWalkers.length;
+    for (let i = 0; i < totalPeds; i++) {
+      let x = 0;
+      let z = 0;
+      if (i < hotspotWalkers.length) {
+        [x, z] = hotspotWalkers[i];
+      } else {
+        const j = i - hotspotWalkers.length;
+        const onNorth = j % 2 === 1;
+        const bandX = ROAD_X[j % ROAD_X.length] + (j % 3 === 0 ? 18 : -18);
+        x = bandX + ((j * 53) % 180) - 90;
+        z = onNorth ? -620 - ((j * 211) % 1650) : 620 + ((j * 211) % 1650);
+        if (isWaterChannel(x, z) || this.collidesWithSolidWall(x, z, 1.0)) {
+          x = ROAD_X[j % ROAD_X.length] + 16;
+          z = onNorth ? -720 : 720;
+        }
       }
-      const groundY = getTerrainHeightAt(x, z);
+      const groundY = Math.max(LAND_Y, getTerrainHeightAt(x, z));
       const rig = createCharacterRig('npc', this.textures.contactShadow, shirts[i % shirts.length]);
       rig.root.position.set(x, groundY, z);
       this.scene.add(rig.root);
@@ -1844,13 +2368,13 @@ export class ViceCityEngine {
 
     // 2 Rival Street Gang Factions (Royals in Vice Downtown West, Skulls in Northport Docks)
     const gangConfigs: Array<{ faction: 'royals' | 'skulls'; cx: number; cz: number; color: number; label: string }> = [
-      { faction: 'royals', cx: -175, cz: 255, color: 0x9333ea, label: 'Vice Royals Crew' },
-      { faction: 'skulls', cx: -175, cz: -178, color: 0x991b1b, label: 'Northport Skulls' },
+      { faction: 'royals', cx: -1050, cz: 1445, color: 0x9333ea, label: 'Vice Royals Crew' },
+      { faction: 'skulls', cx: -1050, cz: -1120, color: 0x991b1b, label: 'Northport Skulls' },
     ];
     gangConfigs.forEach((gc) => {
       for (let m = 0; m < 4; m++) {
-        const gx = gc.cx + (m - 1.5) * 3.5;
-        const gz = gc.cz + (m % 2 === 0 ? -2.5 : 2.5);
+        const gx = gc.cx + (m - 1.5) * 4.0;
+        const gz = gc.cz + (m % 2 === 0 ? -2.8 : 2.8);
         const rig = createCharacterRig('npc', this.textures.contactShadow, gc.color);
         rig.root.position.set(gx, LAND_Y, gz);
         this.scene.add(rig.root);
@@ -1886,7 +2410,7 @@ export class ViceCityEngine {
       }
     });
 
-    // Shoppers browsing Roadside Market Stalls!
+    // Shoppers browsing Roadside Market Stalls
     STREET_STALLS.forEach((st, idx) => {
       for (let b = 0; b < 2; b++) {
         const bx = st.x + (b === 0 ? -1.4 : 1.5);
@@ -1924,10 +2448,10 @@ export class ViceCityEngine {
       }
     });
 
-    // Vice PD Officers stationed at Central Police Precinct (-70, 210)
+    // Vice PD Officers stationed at Central Police Precinct (-350, 1050)
     for (let c = 0; c < 2; c++) {
-      const cx = -78 + c * 16;
-      const cz = 225;
+      const cx = -358 + c * 16;
+      const cz = 1068;
       const rig = createCharacterRig('police', this.textures.contactShadow);
       rig.root.position.set(cx, LAND_Y, cz);
       this.scene.add(rig.root);
@@ -2056,43 +2580,75 @@ export class ViceCityEngine {
   }
 
   private spawnWildlife() {
-    // Northport Woods Alligators
-    const gatorCoords: [number, number][] = [
-      [-60, -475],
-      [-185, -490],
-      [45, -470],
-      [-265, -485],
+    const landLife: Array<{ species: 'gator' | 'deer' | 'boar'; x: number; z: number }> = [
+      { species: 'gator', x: -700, z: -2420 },
+      { species: 'gator', x: -420, z: -2520 },
+      { species: 'gator', x: 180, z: -2480 },
+      { species: 'gator', x: 640, z: -2510 },
+      { species: 'deer', x: -250, z: -2280 },
+      { species: 'deer', x: 460, z: -2290 },
+      { species: 'deer', x: 920, z: -2340 },
+      { species: 'boar', x: -920, z: -2310 },
+      { species: 'boar', x: 520, z: -2410 },
     ];
-    gatorCoords.forEach(([gx, gz], idx) => {
-      const rig = createWildlifeRig('gator');
-      rig.root.position.set(gx, LAND_Y, gz);
+    landLife.forEach((ll, idx) => {
+      const rig = createWildlifeRig(ll.species);
+      rig.root.position.set(ll.x, LAND_Y, ll.z);
       this.scene.add(rig.root);
       this.wildlifeEntries.push({
-        id: `gator_${idx}`,
-        species: 'gator',
+        id: `${ll.species}_${idx}`,
+        species: ll.species,
         rig,
-        x: gx,
+        x: ll.x,
         y: LAND_Y,
-        z: gz,
-        yaw: idx * 1.4,
-        baseX: gx,
-        baseZ: gz,
-        phase: idx * 1.2,
+        z: ll.z,
+        yaw: idx * 1.3,
+        baseX: ll.x,
+        baseZ: ll.z,
+        phase: idx * 1.1,
       });
     });
 
-    // Vice Bay & Ocean Channel Sharks & Jumping Dolphins
-    const oceanLife: Array<{ species: 'shark' | 'dolphin'; x: number; z: number }> = [
-      { species: 'dolphin', x: 185, z: -15 },
-      { species: 'dolphin', x: 432, z: 120 },
-      { species: 'dolphin', x: 446, z: -145 },
-      { species: 'shark', x: -165, z: 10 },
-      { species: 'shark', x: 472, z: 35 },
-      { species: 'shark', x: 460, z: -190 },
+    const birdSpots: Array<[number, number]> = [
+      [1690, 950],
+      [350, 1750],
+      [2650, 1100],
+      [2650, -1100],
+      [0, 0],
+    ];
+    birdSpots.forEach(([bx, bz], idx) => {
+      const rig = createWildlifeRig('bird');
+      rig.root.position.set(bx, 22, bz);
+      this.scene.add(rig.root);
+      this.wildlifeEntries.push({
+        id: `bird_${idx}`,
+        species: 'bird',
+        rig,
+        x: bx,
+        y: 22,
+        z: bz,
+        yaw: idx * 0.8,
+        baseX: bx,
+        baseZ: bz,
+        phase: idx * 1.5,
+      });
+    });
+
+    const oceanLife: Array<{ species: 'shark' | 'dolphin' | 'fish'; x: number; z: number }> = [
+      { species: 'dolphin', x: 480, z: -80 },
+      { species: 'dolphin', x: 1980, z: 320 },
+      { species: 'dolphin', x: 2150, z: -340 },
+      { species: 'shark', x: -520, z: 95 },
+      { species: 'shark', x: 2220, z: 180 },
+      { species: 'shark', x: 2100, z: -650 },
+      { species: 'fish', x: 1920, z: 240 },
+      { species: 'fish', x: 2040, z: 120 },
+      { species: 'fish', x: 320, z: -260 },
+      { species: 'fish', x: 2460, z: 1020 },
     ];
     oceanLife.forEach((ol, idx) => {
       const rig = createWildlifeRig(ol.species);
-      const startY = ol.species === 'shark' ? -0.55 : -0.2;
+      const startY = ol.species === 'shark' ? -0.55 : ol.species === 'fish' ? -0.65 : -0.2;
       rig.root.position.set(ol.x, startY, ol.z);
       this.scene.add(rig.root);
       this.wildlifeEntries.push({
@@ -2296,7 +2852,11 @@ export class ViceCityEngine {
         if (this.drivingVehicle.state.tier === 'boat') {
           this.drivingVehicle.state.anchorDropped = !this.drivingVehicle.state.anchorDropped;
           this.showToast(this.drivingVehicle.state.anchorDropped ? 'Anchor Dropped!' : 'Anchor Raised!');
-        } else if (this.drivingVehicle.state.tier === 'bike') {
+        } else if (
+          this.drivingVehicle.state.tier === 'bike' ||
+          this.drivingVehicle.state.tier === 'sportbike' ||
+          this.drivingVehicle.state.tier === 'scooty'
+        ) {
           this.drivingVehicle.state.wheelieActive = !this.drivingVehicle.state.wheelieActive;
         } else {
           this.drivingVehicle.state.ducking = !this.drivingVehicle.state.ducking;
@@ -2368,9 +2928,9 @@ export class ViceCityEngine {
     const p = this.protagonists[this.activeId];
     p.health = p.maxHealth;
     p.armor = 50;
-    p.x = 206.5;
+    p.x = 1046.5;
     p.y = LAND_Y;
-    p.z = 213.5;
+    p.z = 1053.5;
     p.isSitting = false;
     p.actionState = 'idle';
     p.oxygen = 100;
@@ -2381,6 +2941,9 @@ export class ViceCityEngine {
     this.wanted.stars = 0;
     this.wanted.heat = 0;
     this.wanted.witnessActive = false;
+    this.pendingRobberyAlert = null;
+    this.activeRobbery = { stage: 'none', cashier: null, interiorId: null, amount: 0, timer: 0 };
+    this.removeRobberyBagMesh();
     this.cash = Math.max(0, this.cash - 250);
     this.screen = 'playing';
     this.showToast('Discharged from Vice General (-$250)');
@@ -2551,13 +3114,13 @@ export class ViceCityEngine {
     let reply = dist < 45 ? `Got your text! Jogging over to you now.` : `Got your text! Driving over to meet you now.`;
     if (goToVenue === 'coffee') {
       reply = `Coffee sounds perfect! Let's head to Vice Roast Coffee Shop.`;
-      this.setWaypoint(210, 105, 'Vice Roast Coffee Shop');
+      this.setWaypoint(1050, 525, 'Vice Roast Coffee Shop');
     } else if (goToVenue === 'bar') {
       reply = `Yes! Let's grab drinks at Neon Anchor Beer Bar!`;
-      this.setWaypoint(-210, 210, 'Neon Anchor Beer Bar');
+      this.setWaypoint(-1050, 1050, 'Neon Anchor Beer Bar');
     } else if (goToVenue === 'park') {
       reply = `Love it — let's walk over to Leonida Central Park!`;
-      this.setWaypoint(70, 350, 'Leonida Central Park');
+      this.setWaypoint(350, 1750, 'Leonida Central Park');
     }
 
     this.messages.push({ id: `msg_${Date.now()}_r`, sender: partnerId, text: reply, time: 'Now' });
@@ -2589,10 +3152,10 @@ export class ViceCityEngine {
       this.relationship.duoActive = true;
       this.relationship.partnerState = 'following';
       if (choice === 'coffee') {
-        this.setWaypoint(210, 105, 'Vice Roast Coffee Shop');
+        this.setWaypoint(1050, 525, 'Vice Roast Coffee Shop');
         this.showToast(`${partnerName}: "Let's grab espresso at Vice Roast!"`);
       } else if (choice === 'bar') {
-        this.setWaypoint(-210, 210, 'Neon Anchor Beer Bar');
+        this.setWaypoint(-1050, 1050, 'Neon Anchor Beer Bar');
         this.showToast(`${partnerName}: "First round's on us at Neon Anchor!"`);
       } else {
         this.showToast(`${partnerName} is rolling with you now!`);
@@ -3107,10 +3670,10 @@ export class ViceCityEngine {
     else this.cash -= cost;
 
     const dropSpots = [
-      { x: 162, z: 168, name: 'Downtown Alley Stash' },
-      { x: -135, z: 165, name: 'West Avenue Underpass Stash' },
-      { x: 295, z: 325, name: 'Vice Harbor Pier 4 Crate' },
-      { x: -245, z: -178, name: 'Northport Chop Shop Drop' },
+      { x: 1010, z: 1015, name: 'Downtown Villa Alley Stash' },
+      { x: -680, z: 1420, name: 'West Avenue Underpass Stash' },
+      { x: 1600, z: 1720, name: 'Port Vice Marina Pier Crate' },
+      { x: -1220, z: -880, name: 'Northport Chop Shop Drop' },
     ];
     const spot = dropSpots[Math.floor(Math.random() * dropSpots.length)];
     const drop: DarkWebDrop = {
@@ -3199,34 +3762,57 @@ export class ViceCityEngine {
     this.pushHud();
   }
 
+  public setBurgerRole(role: 'kitchen' | 'delivery') {
+    if (!this.burgerJob.clockedIn) {
+      this.showToast('Put on uniform & clock in first!');
+      return;
+    }
+    this.burgerJob.role = role;
+    if (role === 'kitchen') {
+      this.burgerJob.kitchenPhase = 'need_grill';
+      this.burgerJob.grillProgress = 0;
+      this.closeModal();
+      this.showToast('Kitchen Shift active! Walk to Flat-Top Grill inside Burger Shot and press [E].');
+    } else {
+      this.launchBurgerDelivery();
+    }
+    this.pushHud();
+  }
+
   public launchBurgerDelivery() {
     if (!this.burgerJob.clockedIn) {
       this.showToast('Clock in at Burger Shot first!');
       return;
     }
     const target = DELIVERY_TARGETS[Math.floor(Math.random() * DELIVERY_TARGETS.length)];
+    const dist = Math.hypot(target.x - 350, target.z - 1050);
+    const timeLimit = Math.max(105, Math.round(dist * 0.1) + 40);
+    const reward = 40 + Math.min(40, Math.round(dist / 65));
+    const player = this.protagonists[this.activeId];
+    player.carryingBurgerBox = true;
+    this.burgerJob.role = 'delivery';
     this.burgerJob.activeDelivery = {
       targetX: target.x,
       targetZ: target.z,
       customerName: target.customerName,
-      timer: 75,
-      reward: 320,
+      timer: timeLimit,
+      reward,
       parkedNearTarget: false,
     };
+    this.spawnDeliveryBeacon(target.x, target.z);
 
-    // Spawn an orange Burger Shot scooter right outside!
-    const scooterId = `faggio_bs_${Date.now()}`;
+    const scooterId = `scooty_bs_${Date.now()}`;
     const scooterState: VehicleState = {
       id: scooterId,
-      name: 'Burger Shot Faggio Scooter',
-      tier: 'bike',
-      fuelType: 'petrol',
+      name: 'Burger Shot Delivery Scooty',
+      tier: 'scooty',
+      fuelType: 'ev',
       fuel: 100,
       maxFuel: 100,
       health: 100,
       maxHealth: 100,
       speed: 0,
-      maxSpeed: 32,
+      maxSpeed: 34,
       hotwired: true,
       needsKeyCloner: false,
       gpsTrackerActive: false,
@@ -3253,15 +3839,15 @@ export class ViceCityEngine {
       wheelStyle: 'stock',
       colorHex: '#f97316',
     };
-    const rig = createVehicleRig('bike', '#f97316', this.textures.contactShadow, this.isSoftwareGl);
-    rig.root.position.set(70, LAND_Y, 224);
+    const rig = createVehicleRig('scooty', '#f97316', this.textures.contactShadow, this.isSoftwareGl);
+    rig.root.position.set(355, LAND_Y, 1066);
     this.scene.add(rig.root);
     this.vehicles.push({
       state: scooterState,
       rig,
-      x: 70,
+      x: 355,
       y: LAND_Y,
-      z: 224,
+      z: 1066,
       yaw: Math.PI / 2,
       vy: 0,
       vx: 0,
@@ -3283,7 +3869,7 @@ export class ViceCityEngine {
 
     this.setWaypoint(target.x, target.z, `Deliver to ${target.customerName}`);
     this.closeModal();
-    this.showToast(`Scooter parked outside! Deliver to ${target.customerName} in 75s for +$320!`);
+    this.showToast(`Scooty parked outside! Deliver to ${target.customerName} in ${timeLimit}s (+$${reward})!`);
   }
 
   public stealBurgerRegister() {
@@ -3292,10 +3878,10 @@ export class ViceCityEngine {
     this.profile.robberiesCompleted++;
     this.profile.violencePoints += 10;
     this.updateCriminalProfileLabel();
-    this.addWantedStars(2);
+    this.addWantedStars(4);
     viceAudio.playCashRegister();
     this.closeModal();
-    this.showToast(`Robbed Burger Shot Register (+$${loot})! 2-Star Police Alert!`);
+    this.showToast(`Robbed Burger Shot Register (+$${loot})! 4-Star Police Alert!`);
   }
 
   public quitBurgerShotChaos() {
@@ -3311,6 +3897,398 @@ export class ViceCityEngine {
     viceAudio.playImpact(true);
     this.closeModal();
     this.showToast(`"I QUIT!" Smashed counter, grabbed $450 & triggered 2-Star Wanted!`);
+  }
+
+  public eatAtBurgerShop() {
+    if (this.cash < 15) {
+      this.showToast('Need $15 for a Fresh Vice Burger!');
+      return;
+    }
+    this.cash -= 15;
+    const p = this.protagonists[this.activeId];
+    p.health = Math.min(p.maxHealth, p.health + 45);
+    p.stamina = p.maxStamina;
+    p.actionState = 'eat';
+    this.actionTimer = 0.7;
+    viceAudio.playCashRegister();
+    this.showToast('Ate Fresh Vice Burger (-$15): +45 HP & Full Stamina!');
+    this.pushHud();
+  }
+
+  public invitePartnerSitNearby() {
+    const p = this.protagonists[this.activeId];
+    const partnerId: ProtagonistId = this.activeId === 'jason' ? 'lucia' : 'jason';
+    const partner = this.protagonists[partnerId];
+    const seat = SEAT_SPOTS.find((s) => Math.hypot(s.x - p.x, s.z - p.z) < 8 && s.id !== p.sittingSeatId);
+    if (!seat) {
+      this.showToast('Stand or sit near a booth/bench first!');
+      return;
+    }
+    this.relationship.duoActive = true;
+    this.relationship.partnerInVehicleId = null;
+    partner.x = seat.x;
+    partner.y = seat.y;
+    partner.z = seat.z;
+    partner.yaw = seat.yaw;
+    partner.isSitting = true;
+    partner.sittingSeatId = seat.id;
+    this.adjustRelationship(6, `Sat together at ${seat.label}`);
+    viceAudio.playUiChime(true);
+    this.showToast(`${partner.name} joined your seat (${seat.label})! (+6% Bond)`);
+    this.pushHud();
+  }
+
+  private spawnDeliveryBeacon(x: number, z: number) {
+    this.removeDeliveryBeacon();
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1.35, 24),
+      new THREE.MeshBasicMaterial({ color: 0xf97316, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.08;
+    const marker = new THREE.Mesh(
+      new THREE.ConeGeometry(0.42, 0.9, 12),
+      new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+    );
+    marker.rotation.x = Math.PI;
+    marker.position.y = 2.1;
+    g.add(ring, marker);
+    g.position.set(x, LAND_Y, z);
+    this.scene.add(g);
+    this.deliveryBeaconMesh = g;
+  }
+
+  private removeDeliveryBeacon() {
+    if (this.deliveryBeaconMesh) {
+      this.scene.remove(this.deliveryBeaconMesh);
+      this.deliveryBeaconMesh = null;
+    }
+  }
+
+  private spawnRobberyBagOnCounter(interiorId: string | null) {
+    this.removeRobberyBagMesh();
+    const intInfo = interiorId ? this.worldInteriors.find((i) => i.id === interiorId) : null;
+    if (!intInfo) return;
+    const bagX = intInfo.kind === 'burgershot' ? intInfo.x - 1.2 : intInfo.x - intInfo.width * 0.15;
+    const bagZ = intInfo.kind === 'burgershot' ? intInfo.z - 1.2 : intInfo.z - intInfo.depth * 0.22;
+    const bagY = LAND_Y + 1.12;
+
+    const g = new THREE.Group();
+    const bag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.58, 0.34, 0.34),
+      new THREE.MeshStandardMaterial({
+        color: 0x065f46,
+        emissive: 0x10b981,
+        emissiveIntensity: 0.75,
+        roughness: 0.35,
+      })
+    );
+    bag.position.y = 0.17;
+    const glowHalo = new THREE.Mesh(
+      new THREE.RingGeometry(0.4, 0.62, 20),
+      new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    );
+    glowHalo.rotation.x = -Math.PI / 2;
+    glowHalo.position.y = 0.02;
+    const cashTop = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 0.12, 0.2),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    cashTop.position.y = 0.38;
+    g.add(bag, glowHalo, cashTop);
+    g.position.set(bagX, bagY, bagZ);
+    this.scene.add(g);
+    this.robberyBagMesh = g;
+  }
+
+  private removeRobberyBagMesh() {
+    if (this.robberyBagMesh) {
+      this.scene.remove(this.robberyBagMesh);
+      this.robberyBagMesh = null;
+    }
+  }
+
+  private spawnPrecinctDispatchCars(storeX: number, storeZ: number) {
+    // Dispatch idle precinct units and spawn 2 Vice PD Cruisers at Police Precinct (-350, 1050) driving toward the robbed store!
+    const existingPrecinct = this.vehicles.filter((v) => v.isPrecinctUnit && v !== this.drivingVehicle);
+    existingPrecinct.forEach((car) => {
+      car.driverPresent = true;
+      car.isPoliceSpawn = true;
+      car.patrolTarget = { x: storeX, z: storeZ };
+    });
+
+    const dispatchOffsets = [
+      { x: -366, z: 1084 },
+      { x: -334, z: 1084 },
+    ];
+    dispatchOffsets.forEach((pos, idx) => {
+      const rig = createVehicleRig('police', '#111827', this.textures.contactShadow, this.isSoftwareGl);
+      const startY = getTerrainHeightAt(pos.x, pos.z);
+      rig.root.position.set(pos.x, startY, pos.z);
+      rig.root.rotation.y = Math.PI;
+      this.scene.add(rig.root);
+
+      const state: VehicleState = {
+        id: `pd_dispatch_${Date.now()}_${idx}`,
+        name: 'Vice PD Dispatch Cruiser',
+        tier: 'police',
+        fuelType: 'petrol',
+        fuel: 100,
+        maxFuel: 100,
+        health: 100,
+        maxHealth: 100,
+        speed: 0,
+        maxSpeed: 42,
+        hotwired: true,
+        needsKeyCloner: false,
+        gpsTrackerActive: false,
+        gpsTimer: 0,
+        headlightsOn: true,
+        leftBlinker: false,
+        rightBlinker: false,
+        windowsDown: false,
+        trunkOpen: false,
+        hoodOpen: false,
+        convertibleOpen: false,
+        roofIsConvertible: false,
+        seat: 'driver',
+        ducking: false,
+        wheelieActive: false,
+        tireFlat: false,
+        anchorDropped: false,
+        trunkWeapons: [],
+        trunkLoot: 0,
+        trunkOutfits: [],
+        flooded: false,
+        submersionDepth: 0,
+        turboLevel: 0,
+        wheelStyle: 'stock',
+        colorHex: '#111827',
+      };
+
+      this.vehicles.push({
+        state,
+        rig,
+        x: pos.x,
+        y: startY,
+        z: pos.z,
+        yaw: Math.PI,
+        vy: 0,
+        vx: 0,
+        vz: 0,
+        angVel: 0,
+        steerAngle: 0,
+        wheelSpin: 0,
+        isTraffic: false,
+        isPoliceSpawn: true,
+        isPrecinctUnit: true,
+        trafficDir: 1,
+        trafficAxis: 'z',
+        driverPresent: true,
+        patrolTarget: { x: storeX, z: storeZ },
+        leftDoorAngle: 0,
+        rightDoorAngle: 0,
+        leftDoorTimer: 0,
+        rightDoorTimer: 0,
+      });
+    });
+  }
+
+  public collectRobberyBag() {
+    if (this.activeRobbery.stage !== 'bag_ready') return;
+    const amount = this.activeRobbery.amount || 850;
+    const interiorId = this.activeRobbery.interiorId;
+    const intInfo = interiorId ? this.worldInteriors.find((i) => i.id === interiorId) : null;
+    if (intInfo) intInfo.robbedCooldown = 120;
+    if (this.activeRobbery.cashier) {
+      this.activeRobbery.cashier.packingCash = false;
+      this.activeRobbery.cashier.fleeing = true;
+    }
+    this.removeRobberyBagMesh();
+    const p = this.protagonists[this.activeId];
+    p.duffelBag.lootValue += amount;
+    this.cash += amount;
+    this.profile.robberiesCompleted++;
+    this.activeRobbery = { stage: 'none', cashier: null, interiorId: null, amount: 0, timer: 0 };
+    if (intInfo?.hasCCTV && !intInfo.cctvWiped) {
+      this.wanted.cctvRecorded = true;
+      this.wanted.cctvBuildingId = interiorId;
+      this.wanted.disguiseNeeded = true;
+    }
+    this.pendingRobberyAlert = {
+      interiorId: interiorId ?? '',
+      storeX: intInfo?.x ?? p.x,
+      storeZ: intInfo?.z ?? p.z,
+      exited: !interiorId,
+      timer: 1.5,
+    };
+    viceAudio.playCashRegister();
+    this.showToast(`Took Cash Bag (+$${amount.toLocaleString()})! Exit the door to escape!`);
+    this.checkMissionProgress();
+    this.pushHud();
+  }
+
+  public bookTaxi(destX: number, destZ: number, destLabel: string) {
+    const p = this.protagonists[this.activeId];
+    if (this.drivingVehicle) {
+      this.showToast('Exit your current vehicle before booking a Smart Taxi!');
+      return;
+    }
+    if (isWaterSurfaceAt(p.x, p.z)) {
+      this.showToast('Swim ashore to a road before booking a taxi!');
+      return;
+    }
+    const dist = Math.hypot(destX - p.x, destZ - p.z);
+    const fare = Math.max(45, Math.min(480, Math.round(dist * 0.14)));
+
+    if (!this.taxiVehicle || !this.vehicles.includes(this.taxiVehicle)) {
+      const roadX = ROAD_X.reduce((a, b) => (Math.abs(b - p.x) < Math.abs(a - p.x) ? b : a), ROAD_X[0]);
+      const spawnZ = p.z + (p.z > 0 ? 55 : -55);
+      const sx = Math.abs(roadX - p.x) < 180 ? roadX : p.x + 28;
+      const sz = isWaterSurfaceAt(sx, spawnZ) ? p.z : spawnZ;
+      const sy = Math.max(LAND_Y, getTerrainHeightAt(sx, sz));
+      const state: VehicleState = {
+        id: `smart_taxi_${Date.now()}`,
+        name: 'Vice Smart Cab (UPI)',
+        tier: 'taxi',
+        fuelType: 'petrol',
+        fuel: 100,
+        maxFuel: 100,
+        health: 100,
+        maxHealth: 100,
+        speed: 0,
+        maxSpeed: 38,
+        hotwired: true,
+        needsKeyCloner: false,
+        gpsTrackerActive: false,
+        gpsTimer: 0,
+        headlightsOn: true,
+        leftBlinker: false,
+        rightBlinker: false,
+        windowsDown: false,
+        trunkOpen: false,
+        hoodOpen: false,
+        convertibleOpen: false,
+        roofIsConvertible: false,
+        seat: 'passenger',
+        ducking: false,
+        wheelieActive: false,
+        tireFlat: false,
+        anchorDropped: false,
+        trunkWeapons: [],
+        trunkLoot: 0,
+        trunkOutfits: [],
+        flooded: false,
+        submersionDepth: 0,
+        turboLevel: 0,
+        wheelStyle: 'stock',
+        colorHex: '#facc15',
+      };
+      const rig = createVehicleRig('taxi', '#facc15', this.textures.contactShadow, this.isSoftwareGl);
+      rig.root.position.set(sx, sy, sz);
+      this.scene.add(rig.root);
+      this.taxiVehicle = {
+        state,
+        rig,
+        x: sx,
+        y: sy,
+        z: sz,
+        yaw: Math.atan2(p.x - sx, p.z - sz),
+        vy: 0,
+        vx: 0,
+        vz: 0,
+        angVel: 0,
+        steerAngle: 0,
+        wheelSpin: 0,
+        isTraffic: false,
+        isPoliceSpawn: false,
+        isPrecinctUnit: false,
+        trafficDir: 1,
+        trafficAxis: 'z',
+        driverPresent: true,
+        leftDoorAngle: 0,
+        rightDoorAngle: 0,
+        leftDoorTimer: 0,
+        rightDoorTimer: 0,
+      };
+      this.vehicles.push(this.taxiVehicle);
+    }
+
+    this.taxiRide = {
+      status: 'en_route_pickup',
+      destLabel,
+      destX,
+      destZ,
+      fare,
+      upiId: 'vicecab@leonidapay',
+      qrSeed: Math.floor(100 + Math.random() * 899),
+    };
+    this.setWaypoint(destX, destZ, `Taxi: ${destLabel}`);
+    this.closeModal();
+    viceAudio.playPhoneRing();
+    this.showToast(`Smart Taxi dispatched! Heading to pickup — Est. UPI Fare $${fare}.`);
+    this.pushHud();
+  }
+
+  public payTaxiUpi() {
+    if (this.taxiRide.status !== 'payment_due') return;
+    const fare = this.taxiRide.fare;
+    if (this.bankBalance >= fare) {
+      this.bankBalance -= fare;
+    } else if (this.cash >= fare) {
+      this.cash -= fare;
+    } else {
+      this.showToast(`Insufficient funds ($${fare})! Skip fare or earn cash.`);
+      return;
+    }
+    this.taxiRide.status = 'idle';
+    this.taxiRide.destLabel = '';
+    this.clout += 25;
+    viceAudio.playCashRegister();
+    this.showToast(`UPI QR Paid (-$${fare}) to ${this.taxiRide.upiId}!`);
+    this.checkMissionProgress();
+    this.pushHud();
+  }
+
+  public skipTaxiFare() {
+    if (this.taxiRide.status !== 'payment_due') return;
+    this.taxiRide.status = 'idle';
+    this.taxiRide.destLabel = '';
+    this.addWantedStars(1);
+    this.showToast('Skipped Taxi UPI Fare! Driver called 911 (+1 Wanted Star).');
+    this.pushHud();
+  }
+
+  public cancelTaxi() {
+    this.taxiRide.status = 'idle';
+    this.taxiRide.destLabel = '';
+    this.showToast('Smart Taxi booking cancelled.');
+    this.pushHud();
+  }
+
+  public buyFlightTicket(fromAirportId: string) {
+    if (this.flightCutscene?.active) return;
+    const src = AIRPORT_ZONES.find((a) => a.id === fromAirportId);
+    const dst = src ? AIRPORT_ZONES.find((a) => a.id === src.destinationId) : null;
+    if (!src || !dst) return;
+    const ticketCost = 150;
+    if (this.cash < ticketCost && this.bankBalance < ticketCost) {
+      this.showToast(`Commercial Flight Ticket costs $${ticketCost}!`);
+      return;
+    }
+    if (this.cash >= ticketCost) this.cash -= ticketCost;
+    else this.bankBalance -= ticketCost;
+
+    this.flightCutscene = {
+      active: true,
+      fromName: src.name,
+      toName: dst.name,
+      progress: 0,
+    };
+    viceAudio.playCashRegister();
+    this.showToast(`Boarding Vice Air Charter (-$${ticketCost}) to ${dst.name}...`);
+    this.pushHud();
   }
 
   public setWaypoint(x: number, z: number, label: string) {
@@ -3397,7 +4375,7 @@ export class ViceCityEngine {
         veh.state.gpsTrackerActive = true;
         veh.state.gpsTimer = 65;
         this.showToast(`Key Cloned! GPS active — drive to Fence within 65s!`);
-        this.setWaypoint(FENCE_SPOTS[0].x, FENCE_SPOTS[0].z, 'Wynwood Chop Shop Fence');
+        this.setWaypoint(FENCE_SPOTS[0].x, FENCE_SPOTS[0].z, FENCE_SPOTS[0].name);
       }
       this.enterVehicleWithDoorAnim(veh);
       this.triggerCrimeEvent(veh.x, veh.z, 1, false);
@@ -3843,6 +4821,42 @@ export class ViceCityEngine {
     this.triggerCrimeEvent(x, z, 1, false);
   }
 
+  private isDescendantOf(obj: THREE.Object3D, ancestor: THREE.Object3D): boolean {
+    let cur: THREE.Object3D | null = obj;
+    while (cur) {
+      if (cur === ancestor) return true;
+      cur = cur.parent;
+    }
+    return false;
+  }
+
+  private getCrosshairAimTarget(maxDist = 180): { point: THREE.Vector3; dir: THREE.Vector3 } {
+    const p = this.protagonists[this.activeId];
+    const playerRoot = this.protagonistRigs[this.activeId]?.root;
+    this.camera.updateMatrixWorld();
+    this.aimRaycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    this.aimRaycaster.far = maxDist;
+    const ray = this.aimRaycaster.ray;
+
+    const hits = this.aimRaycaster.intersectObjects(this.scene.children, true);
+    for (const hit of hits) {
+      if (hit.distance < 0.65) continue;
+      if (playerRoot && this.isDescendantOf(hit.object, playerRoot)) continue;
+      if (this.oceanWater && hit.object === this.oceanWater.mesh) continue;
+      if (this.tracers.some((tr) => tr.mesh === hit.object)) continue;
+      // Ignore hits behind the character relative to camera forward
+      const toHitX = hit.point.x - p.x;
+      const toHitZ = hit.point.z - p.z;
+      if (toHitX * ray.direction.x + toHitZ * ray.direction.z < -0.5) continue;
+      return { point: hit.point.clone(), dir: ray.direction.clone().normalize() };
+    }
+
+    return {
+      point: ray.origin.clone().addScaledVector(ray.direction, maxDist),
+      dir: ray.direction.clone().normalize(),
+    };
+  }
+
   private triggerPrimaryAttack() {
     if (this.drivingVehicle || this.boardingSeq || this.fireCooldown > 0) return;
     const p = this.protagonists[this.activeId];
@@ -3878,6 +4892,8 @@ export class ViceCityEngine {
       return;
     }
 
+    const aimTarget = this.getCrosshairAimTarget(180);
+
     if (weapon.id === 'rpg') {
       if (p.rpgAmmo <= 0) {
         this.showToast('Out of RPG Rockets! Visit Vice Armory for ammo.');
@@ -3888,9 +4904,7 @@ export class ViceCityEngine {
       this.fireCooldown = weapon.fireRate;
       p.actionState = 'combat_aim';
       this.actionTimer = 0.4;
-      const dirX = -Math.sin(this.camYaw);
-      const dirZ = -Math.cos(this.camYaw);
-      p.yaw = Math.atan2(dirX, dirZ);
+      p.yaw = Math.atan2(aimTarget.point.x - p.x, aimTarget.point.z - p.z);
 
       const rocketGroup = new THREE.Group();
       const body = new THREE.Mesh(
@@ -3905,20 +4919,25 @@ export class ViceCityEngine {
       warhead.rotation.x = Math.PI / 2;
       warhead.position.z = 0.46;
       rocketGroup.add(body, warhead);
-      const sx = p.x + dirX * 0.9;
+      const sx = p.x + Math.sin(p.yaw) * 0.85;
       const sy = p.y + 1.48;
-      const sz = p.z + dirZ * 0.9;
+      const sz = p.z + Math.cos(p.yaw) * 0.85;
+      const rDir = new THREE.Vector3(
+        aimTarget.point.x - sx,
+        aimTarget.point.y - sy,
+        aimTarget.point.z - sz
+      ).normalize();
       rocketGroup.position.set(sx, sy, sz);
-      rocketGroup.rotation.y = Math.atan2(dirX, dirZ);
+      rocketGroup.rotation.y = Math.atan2(rDir.x, rDir.z);
       this.scene.add(rocketGroup);
       this.rockets.push({
         mesh: rocketGroup,
         x: sx,
         y: sy,
         z: sz,
-        vx: dirX * 48,
-        vy: -Math.sin(this.camPitch) * 14,
-        vz: dirZ * 48,
+        vx: rDir.x * 48,
+        vy: rDir.y * 48,
+        vz: rDir.z * 48,
         life: 3.0,
       });
       viceAudio.playRocketLaunch();
@@ -3951,23 +4970,57 @@ export class ViceCityEngine {
     viceAudio.playGunshot(isSilenced);
     this.cameraShake = weapon.category === 'rifle' || weapon.category === 'shotgun' || weapon.category === 'sniper' ? 0.16 : 0.08;
 
-    const dirX = -Math.sin(this.camYaw);
-    const dirZ = -Math.cos(this.camYaw);
-    p.yaw = Math.atan2(dirX, dirZ);
+    p.yaw = Math.atan2(aimTarget.point.x - p.x, aimTarget.point.z - p.z);
+    const isSniperScoped = this.aiming && weapon.id === 'sniper';
+    const muzzleX = isSniperScoped
+      ? this.camera.position.x + aimTarget.dir.x * 1.1
+      : p.x + Math.sin(p.yaw) * 0.55 + Math.cos(p.yaw) * 0.2;
+    const muzzleY = isSniperScoped
+      ? this.camera.position.y + aimTarget.dir.y * 1.1 - 0.05
+      : p.y + 1.42;
+    const muzzleZ = isSniperScoped
+      ? this.camera.position.z + aimTarget.dir.z * 1.1
+      : p.z + Math.cos(p.yaw) * 0.55 - Math.sin(p.yaw) * 0.2;
+
+    const shotVec = new THREE.Vector3(
+      aimTarget.point.x - muzzleX,
+      aimTarget.point.y - muzzleY,
+      aimTarget.point.z - muzzleZ
+    ).normalize();
 
     if (weapon.category === 'shotgun') {
+      const baseYaw = Math.atan2(shotVec.x, shotVec.z);
       for (let pellet = -2; pellet <= 2; pellet++) {
-        const spread = pellet * 0.055;
-        const px = -Math.sin(this.camYaw + spread);
-        const pz = -Math.cos(this.camYaw + spread);
-        this.spawnTracer(p.x + px * 0.6, p.y + 1.38, p.z + pz * 0.6, px * 88, 0, pz * 88, true, Math.round(shotDmg * 0.36));
+        const spread = pellet * 0.048;
+        const px = Math.sin(baseYaw + spread);
+        const pz = Math.cos(baseYaw + spread);
+        this.spawnTracer(muzzleX, muzzleY, muzzleZ, px * 88, shotVec.y * 88, pz * 88, true, Math.round(shotDmg * 0.36));
       }
     } else {
       const speed = weapon.category === 'sniper' ? 145 : 98;
-      this.spawnTracer(p.x + dirX * 0.6, p.y + 1.38, p.z + dirZ * 0.6, dirX * speed, 0, dirZ * speed, true, shotDmg);
+      this.spawnTracer(
+        muzzleX,
+        muzzleY,
+        muzzleZ,
+        shotVec.x * speed,
+        shotVec.y * speed,
+        shotVec.z * speed,
+        true,
+        shotDmg
+      );
     }
     if (!isSilenced) {
       this.triggerCrimeEvent(p.x, p.z, 1, false);
+      for (const npc of this.npcs) {
+        if (!npc.alive || npc.kind !== 'civilian' || npc.drivingCar) continue;
+        if (Math.hypot(npc.x - p.x, npc.z - p.z) < 28) {
+          npc.fleeing = true;
+          if (!npc.hasScreamed) {
+            npc.hasScreamed = true;
+            viceAudio.playPanicScreamOnce(npc.id, /sarah|sofia|elena|camila|mia/i.test(npc.name));
+          }
+        }
+      }
     }
     this.pushHud();
   }
@@ -4042,8 +5095,16 @@ export class ViceCityEngine {
         }
       }
     } else {
-      npc.hostile = true;
-      npc.fleeing = false;
+      if (npc.kind === 'civilian' || npc.kind === 'cashier') {
+        npc.fleeing = true;
+        if (!npc.hasScreamed) {
+          npc.hasScreamed = true;
+          viceAudio.playPanicScreamOnce(npc.id, /sarah|sofia|elena|camila|mia/i.test(npc.name));
+        }
+      } else {
+        npc.hostile = true;
+        npc.fleeing = false;
+      }
       if (attackerId !== 'npc') {
         npc.targetProtagonist = attackerId;
         if (npc.kind === 'gang' && npc.gangFaction) {
@@ -4170,7 +5231,7 @@ export class ViceCityEngine {
     let lx = 0;
     let ly = 0.34;
     let lz = -0.2;
-    if (tier === 'bike') {
+    if (tier === 'bike' || tier === 'sportbike' || tier === 'scooty') {
       lx = 0;
       ly = 0.42;
       lz = seat === 'driver' ? -0.22 : -0.58;
@@ -4226,10 +5287,11 @@ export class ViceCityEngine {
       const exitY = bailingWithChute
         ? veh.y - 1.5
         : veh.state.tier === 'boat'
-        ? getWaterWaveHeight(exitX, exitZ, this.elapsedSec, this.currentStormFactor) - 0.25
+        ? getWaterWaveHeight(exitX, exitZ, this.elapsedSec, this.currentStormFactor) - 0.60
         : getTerrainHeightAt(exitX, exitZ);
 
-      if (veh.state.tier !== 'bike' && veh.state.tier !== 'boat') {
+      const isBikeTier = veh.state.tier === 'bike' || veh.state.tier === 'sportbike' || veh.state.tier === 'scooty';
+      if (!isBikeTier && veh.state.tier !== 'boat') {
         veh.leftDoorTimer = 0.72;
       }
       viceAudio.playDoorLatch();
@@ -4240,7 +5302,7 @@ export class ViceCityEngine {
       if (this.relationship.partnerInVehicleId === veh.state.id) {
         const partnerId: ProtagonistId = this.activeId === 'jason' ? 'lucia' : 'jason';
         const partner = this.protagonists[partnerId];
-        if (veh.state.tier !== 'bike' && veh.state.tier !== 'boat') {
+        if (!isBikeTier && veh.state.tier !== 'boat') {
           veh.rightDoorTimer = 0.65;
         }
         partner.x = veh.x + Math.cos(veh.yaw) * (veh.rig.halfWidth + 1.1);
@@ -4308,7 +5370,8 @@ export class ViceCityEngine {
 
   private enterVehicleWithDoorAnim(veh: WorldVehicle) {
     const p = this.protagonists[this.activeId];
-    const sideOffset = veh.state.tier === 'bike' ? veh.rig.halfWidth + 0.42 : veh.rig.halfWidth + 0.58;
+    const isBikeTier = veh.state.tier === 'bike' || veh.state.tier === 'sportbike' || veh.state.tier === 'scooty';
+    const sideOffset = isBikeTier ? veh.rig.halfWidth + 0.42 : veh.rig.halfWidth + 0.58;
     const doorX = veh.x - Math.cos(veh.yaw) * sideOffset;
     const doorZ = veh.z + Math.sin(veh.yaw) * sideOffset;
     const startX = Math.hypot(p.x - doorX, p.z - doorZ) < 2.4 ? p.x : doorX;
@@ -4325,12 +5388,12 @@ export class ViceCityEngine {
     p.isSitting = false;
     p.actionState = 'enter_vehicle';
 
-    if (veh.state.tier !== 'bike' && veh.state.tier !== 'boat') {
+    if (!isBikeTier && veh.state.tier !== 'boat') {
       veh.leftDoorTimer = 0.85;
     }
     viceAudio.playDoorLatch();
 
-    const duration = veh.state.tier === 'bike' || veh.state.tier === 'boat' ? 0.54 : 0.68;
+    const duration = isBikeTier || veh.state.tier === 'boat' ? 0.54 : 0.68;
     this.boardingSeq = {
       vehicle: veh,
       timer: duration,
@@ -4348,7 +5411,7 @@ export class ViceCityEngine {
     this.drivingVehicle = veh;
     this.boardingSeq = null;
     const p = this.protagonists[this.activeId];
-    p.helmetOn = veh.state.tier === 'bike';
+    p.helmetOn = veh.state.tier === 'bike' || veh.state.tier === 'sportbike' || veh.state.tier === 'scooty';
     p.umbrellaOpen = false;
     p.crouching = false;
     p.prone = false;
@@ -4398,12 +5461,29 @@ export class ViceCityEngine {
     const m = this.missions.find((ms) => ms.id === this.activeMissionId);
     if (!m || m.stage === 'completed') return;
 
+    const p = this.protagonists[this.activeId];
     let done = false;
     if (m.id === 'mis_1' && this.profile.robberiesCompleted >= 1 && !this.wanted.cctvRecorded) done = true;
     if (m.id === 'mis_2' && this.profile.carsBoosted >= 1 && this.wanted.stars === 0) done = true;
     if (m.id === 'mis_3' && this.profile.robberiesCompleted >= 2 && this.wanted.stars === 0) done = true;
     if (m.id === 'mis_4' && this.underwaterTreasureFound >= 1) done = true;
     if (m.id === 'mis_5' && this.profile.robberiesCompleted >= 3 && this.wanted.stars === 0) done = true;
+    if (m.id === 'mis_6' && Math.hypot(p.x - m.targetX, p.z - m.targetZ) < 120) done = true;
+    if (m.id === 'mis_7' && this.drivingVehicle?.state.tier === 'truck' && Math.hypot(p.x - m.targetX, p.z - m.targetZ) < 24) done = true;
+    if (
+      m.id === 'mis_8' &&
+      (this.drivingVehicle?.state.tier === 'bike' || this.drivingVehicle?.state.tier === 'sportbike') &&
+      Math.hypot(p.x - m.targetX, p.z - m.targetZ) < 24
+    ) {
+      done = true;
+    }
+    if (
+      m.id === 'mis_9' &&
+      Math.hypot(p.x - m.targetX, p.z - m.targetZ) < 42 &&
+      (this.taxiRide.status === 'idle' || this.drivingVehicle?.state.tier === 'taxi')
+    ) {
+      done = true;
+    }
 
     if (done) {
       m.stage = 'completed';
@@ -4501,11 +5581,11 @@ export class ViceCityEngine {
       ts.rig.redMat.emissiveIntensity = !activeGreen ? 2.0 : 0.05;
     }
 
-    // Drifting Sky Clouds
+    // Drifting Sky Clouds across 5x world
     if (this.cloudGroup) {
       for (const c of this.cloudGroup.children) {
         c.position.x += rawDt * 2.4;
-        if (c.position.x > 650) c.position.x = -650;
+        if (c.position.x > 2800) c.position.x = -2800;
       }
     }
 
@@ -4532,9 +5612,9 @@ export class ViceCityEngine {
     this.updateWeatherAndAtmosphere(rawDt);
 
     if (this.screen === 'title') {
-      const angle = this.elapsedSec * 0.11;
-      this.camera.position.set(60 + Math.cos(angle) * 115, 34 + Math.sin(angle * 0.5) * 5, 65 + Math.sin(angle) * 115);
-      this.camera.lookAt(10, 5, 10);
+      const angle = this.elapsedSec * 0.085;
+      this.camera.position.set(380 + Math.cos(angle) * 215, 46 + Math.sin(angle * 0.5) * 6, 980 + Math.sin(angle) * 215);
+      this.camera.lookAt(520, 10, 1050);
       this.syncProtagonistRigs(rawDt);
       return;
     }
@@ -4551,6 +5631,43 @@ export class ViceCityEngine {
     }
 
     const p = this.protagonists[this.activeId];
+
+    // Commercial Charter Flight Cutscene between South Vice & Northport Airports
+    if (this.flightCutscene?.active) {
+      this.flightCutscene.progress = Math.min(1, this.flightCutscene.progress + rawDt * 0.22);
+      const src = AIRPORT_ZONES.find((a) => a.name === this.flightCutscene?.fromName) ?? AIRPORT_ZONES[0];
+      const dst = AIRPORT_ZONES.find((a) => a.name === this.flightCutscene?.toName) ?? AIRPORT_ZONES[1];
+      const t = this.flightCutscene.progress;
+      const fx = THREE.MathUtils.lerp(src.runwayX, dst.runwayX, t);
+      const fz = THREE.MathUtils.lerp(src.runwayZ, dst.runwayZ, t);
+      const fy = 42 + Math.sin(t * Math.PI) * 110;
+      this.camera.position.set(fx + 55, fy + 16, fz + 35);
+      this.camera.lookAt(fx, fy - 12, fz - 90 * Math.sign(dst.runwayZ - src.runwayZ || 1));
+      if (t >= 1) {
+        p.x = dst.ticketX + 6;
+        p.y = LAND_Y;
+        p.z = dst.ticketZ;
+        p.yaw = Math.PI / 2;
+        this.flightCutscene = null;
+        if (this.relationship.duoActive && !this.relationship.partnerInVehicleId) {
+          const partnerId: ProtagonistId = this.activeId === 'jason' ? 'lucia' : 'jason';
+          this.protagonists[partnerId].x = p.x - 2.2;
+          this.protagonists[partnerId].y = LAND_Y;
+          this.protagonists[partnerId].z = p.z + 1.5;
+        }
+        this.checkMissionProgress();
+        this.showToast(`Touchdown at ${dst.name}! Welcome ashore.`);
+        this.pushHud();
+      } else {
+        this.hudSyncTimer += rawDt;
+        if (this.hudSyncTimer >= 0.08) {
+          this.hudSyncTimer = 0;
+          this.pushHud();
+        }
+      }
+      return;
+    }
+
     if (this.slowMoActive) {
       p.focusMeter = Math.max(0, p.focusMeter - rawDt * 18);
       if (p.focusMeter <= 0) this.slowMoActive = false;
@@ -4566,6 +5683,116 @@ export class ViceCityEngine {
       this.actionTimer = Math.max(0, this.actionTimer - rawDt);
       if (this.actionTimer === 0 && (p.actionState === 'reload' || p.actionState === 'eat' || p.actionState === 'cook' || p.actionState === 'mop' || p.actionState === 'lockpick' || p.actionState === 'dodge' || p.actionState === 'combat_aim')) {
         p.actionState = 'idle';
+      }
+    }
+
+    // Active Store Robbery Cashier Packing Timer & Glowing Cash Bag Animation
+    if (this.robberyBagMesh) {
+      this.robberyBagMesh.rotation.y += rawDt * (this.activeRobbery.stage === 'bag_ready' ? 1.8 : 0.5);
+      const pulse = this.activeRobbery.stage === 'bag_ready' ? 1.05 + Math.sin(this.elapsedSec * 7) * 0.1 : 0.72 + (1 - this.activeRobbery.timer / 3.2) * 0.3;
+      this.robberyBagMesh.scale.setScalar(pulse);
+    }
+
+    if (this.activeRobbery.stage === 'packing') {
+      this.activeRobbery.timer = Math.max(0, this.activeRobbery.timer - simDt);
+      if (this.activeRobbery.cashier) this.activeRobbery.cashier.packingCash = true;
+      if (this.activeRobbery.timer <= 0) {
+        this.activeRobbery.stage = 'bag_ready';
+        if (this.activeRobbery.cashier) this.activeRobbery.cashier.packingCash = false;
+        viceAudio.playUiChime(true);
+        this.showToast(`Cash Bag ($${this.activeRobbery.amount.toLocaleString()}) ready on counter! Press [Take Cash]!`);
+      }
+    }
+
+    // 1.5s Post-Exit Robbery 4-Star Wanted & Precinct Police Car Dispatch
+    if (this.pendingRobberyAlert) {
+      if (!this.pendingRobberyAlert.exited && this.currentInterior?.id !== this.pendingRobberyAlert.interiorId) {
+        this.pendingRobberyAlert.exited = true;
+      }
+      if (this.pendingRobberyAlert.exited) {
+        this.pendingRobberyAlert.timer -= rawDt;
+        if (this.pendingRobberyAlert.timer <= 0) {
+          const alert = this.pendingRobberyAlert;
+          this.pendingRobberyAlert = null;
+          if (this.wanted.stars < 4) {
+            this.addWantedStars(4 - this.wanted.stars);
+          }
+          this.spawnPrecinctDispatchCars(alert.storeX, alert.storeZ);
+          this.showToast('4-STAR WANTED! Police Cars dispatched from Vice PD Precinct!');
+          this.pushHud();
+        }
+      }
+    }
+
+    // Smart Taxi Autonomous Pickup & UPI Destination Ride
+    if (this.taxiRide.status !== 'idle' && this.taxiVehicle) {
+      const taxi = this.taxiVehicle;
+      if (this.taxiRide.status === 'en_route_pickup') {
+        const dPlayer = Math.hypot(p.x - taxi.x, p.z - taxi.z);
+        if (dPlayer <= 11.5) {
+          taxi.state.speed = 0;
+          this.taxiRide.status = 'waiting_board';
+          viceAudio.playHorn();
+          this.showToast(`Smart Taxi arrived! Walk close or press [E] to board for ${this.taxiRide.destLabel}.`);
+        } else {
+          const route = computeGpsRoute(taxi.x, taxi.z, p.x, p.z);
+          const wp = route[1] ?? route[0] ?? { x: p.x, z: p.z };
+          const tYaw = Math.atan2(wp.x - taxi.x, wp.z - taxi.z);
+          taxi.yaw = this.dampAngle(taxi.yaw, tYaw, 4.5, simDt);
+          const spd = 22;
+          const nx = taxi.x + Math.sin(taxi.yaw) * spd * simDt;
+          const nz = taxi.z + Math.cos(taxi.yaw) * spd * simDt;
+          if (!this.collidesWithSolidWall(nx, nz, 1.4)) {
+            taxi.x = nx;
+            taxi.z = nz;
+          } else {
+            taxi.yaw += 1.2 * simDt;
+          }
+          taxi.y = getTerrainHeightAt(taxi.x, taxi.z);
+          taxi.wheelSpin += spd * simDt * 2.4;
+        }
+      } else if (this.taxiRide.status === 'waiting_board') {
+        if (!this.drivingVehicle && Math.hypot(p.x - taxi.x, p.z - taxi.z) < 3.2) {
+          taxi.rightDoorTimer = 0.65;
+          viceAudio.playDoorLatch();
+          this.taxiRide.status = 'driving_to_dest';
+          p.isSitting = false;
+          p.crouching = false;
+          p.prone = false;
+          p.actionState = 'sit_drive';
+          this.showToast(`Riding Smart Taxi to ${this.taxiRide.destLabel}...`);
+        }
+      } else if (this.taxiRide.status === 'driving_to_dest') {
+        const dDest = Math.hypot(this.taxiRide.destX - taxi.x, this.taxiRide.destZ - taxi.z);
+        if (dDest <= 15) {
+          taxi.state.speed = 0;
+          taxi.rightDoorTimer = 0.7;
+          viceAudio.playDoorLatch();
+          p.x = taxi.x + Math.cos(taxi.yaw) * (taxi.rig.halfWidth + 1.4);
+          p.z = taxi.z - Math.sin(taxi.yaw) * (taxi.rig.halfWidth + 1.4);
+          p.y = Math.max(LAND_Y, getTerrainHeightAt(p.x, p.z));
+          p.actionState = 'idle';
+          this.taxiRide.status = 'payment_due';
+          this.waypoint = null;
+          this.showToast(`Arrived at ${this.taxiRide.destLabel}! Pay $${this.taxiRide.fare} via UPI QR.`);
+          this.pushHud();
+        } else {
+          const route = computeGpsRoute(taxi.x, taxi.z, this.taxiRide.destX, this.taxiRide.destZ);
+          const wp = route[1] ?? route[0] ?? { x: this.taxiRide.destX, z: this.taxiRide.destZ };
+          const tYaw = Math.atan2(wp.x - taxi.x, wp.z - taxi.z);
+          taxi.yaw = this.dampAngle(taxi.yaw, tYaw, 4.5, simDt);
+          const spd = 30;
+          const nx = taxi.x + Math.sin(taxi.yaw) * spd * simDt;
+          const nz = taxi.z + Math.cos(taxi.yaw) * spd * simDt;
+          if (!this.collidesWithSolidWall(nx, nz, 1.4)) {
+            taxi.x = nx;
+            taxi.z = nz;
+          } else {
+            taxi.yaw += 1.0 * simDt;
+          }
+          taxi.y = getTerrainHeightAt(taxi.x, taxi.z);
+          taxi.wheelSpin += spd * simDt * 2.4;
+        }
       }
     }
 
@@ -4599,7 +5826,7 @@ export class ViceCityEngine {
     }
 
     // High-Cash Street Mugger Risk (deposit cash at Bank / ATM to protect it!)
-    if (!this.drivingVehicle && !this.currentInterior && this.cash > 5000) {
+    if (!this.drivingVehicle && this.taxiRide.status !== 'driving_to_dest' && !this.currentInterior && this.cash > 5000) {
       this.muggerCooldown -= rawDt;
       if (this.muggerCooldown <= 0) {
         this.muggerCooldown = 55;
@@ -4637,29 +5864,39 @@ export class ViceCityEngine {
       this.waypoint = null;
     }
 
-    // Burger Shot Timed Delivery Tracker
+    // Burger Shot Timed Delivery Tracker (manual Deliver at door within timer)
     if (this.burgerJob.activeDelivery) {
       const del = this.burgerJob.activeDelivery;
       del.timer -= rawDt;
-      if (Math.hypot(p.x - del.targetX, p.z - del.targetZ) < 6.5) {
-        this.cash += del.reward;
-        this.burgerJob.shiftsCompleted++;
-        this.clout += 45;
+      const dTarget = Math.hypot(p.x - del.targetX, p.z - del.targetZ);
+      del.parkedNearTarget = dTarget < 11.5;
+      if (this.deliveryBeaconMesh) {
+        this.deliveryBeaconMesh.rotation.y += rawDt * 2.2;
+        this.deliveryBeaconMesh.position.y = LAND_Y + Math.sin(this.elapsedSec * 4) * 0.15;
+      }
+      if (del.timer <= 0) {
+        p.carryingBurgerBox = false;
         this.burgerJob.activeDelivery = null;
         this.waypoint = null;
-        viceAudio.playCashRegister();
-        this.showToast(`Delivered hot Bleeder Combo to ${del.customerName}! +$${del.reward}`);
-      } else if (del.timer <= 0) {
-        this.burgerJob.activeDelivery = null;
-        this.waypoint = null;
+        this.removeDeliveryBeacon();
         this.showToast(`Burger Shot delivery timed out — customer canceled.`);
       }
+    } else if (this.deliveryBeaconMesh) {
+      this.removeDeliveryBeacon();
     }
 
     if (this.keys['ArrowLeft']) this.camYaw += rawDt * 2.4;
     if (this.keys['ArrowRight']) this.camYaw -= rawDt * 2.4;
 
-    if (this.boardingSeq) {
+    if (this.taxiRide.status === 'driving_to_dest' && this.taxiVehicle) {
+      const seatPos = this.getVehicleSeatWorldPos(this.taxiVehicle, 'passenger');
+      p.x = seatPos.x;
+      p.y = seatPos.y;
+      p.z = seatPos.z;
+      p.yaw = this.taxiVehicle.yaw;
+      p.actionState = 'sit_drive';
+      this.syncProtagonistRigs(simDt);
+    } else if (this.boardingSeq) {
       const b = this.boardingSeq;
       b.timer -= simDt;
       const prog = THREE.MathUtils.clamp(1 - b.timer / b.duration, 0, 1);
@@ -4720,11 +5957,14 @@ export class ViceCityEngine {
 
     const wType = WEATHER_ORDER[this.weatherIndex];
     const rainLevel = wType === 'storm' ? 1 : wType === 'rain' ? 0.65 : 0;
-    const oceanProximity = p.x > 330 ? Math.min(1, (p.x - 330) / 80) : 0;
+    const oceanProximity =
+      p.x > 1680 ? Math.min(1, (p.x - 1680) / 140) : Math.abs(p.z) < 420 ? Math.min(1, (420 - Math.abs(p.z)) / 140) : 0;
     const speedRatio = this.drivingVehicle ? this.drivingVehicle.state.speed / this.drivingVehicle.state.maxSpeed : 0;
     const vehMode = !this.drivingVehicle
       ? 'car'
-      : this.drivingVehicle.state.tier === 'bike'
+      : this.drivingVehicle.state.tier === 'bike' ||
+        this.drivingVehicle.state.tier === 'sportbike' ||
+        this.drivingVehicle.state.tier === 'scooty'
       ? 'bike'
       : this.drivingVehicle.state.tier === 'heli'
       ? 'heli'
@@ -4734,8 +5974,21 @@ export class ViceCityEngine {
       ? 'boat'
       : 'car';
 
-    const radioAudible = (Boolean(this.drivingVehicle) || this.earphonesOn) && this.radioStation !== 'Off';
-    viceAudio.updateContinuous(speedRatio, Boolean(this.drivingVehicle), this.wanted.stars, this.elapsedSec, this.slowMoActive, rainLevel, oceanProximity, vehMode, radioAudible, rawDt);
+    const radioAudible =
+      (Boolean(this.drivingVehicle) || this.taxiRide.status === 'driving_to_dest' || this.earphonesOn) &&
+      this.radioStation !== 'Off';
+    viceAudio.updateContinuous(
+      speedRatio,
+      Boolean(this.drivingVehicle) || this.taxiRide.status === 'driving_to_dest',
+      this.wanted.stars,
+      this.elapsedSec,
+      this.slowMoActive,
+      rainLevel,
+      oceanProximity,
+      vehMode,
+      radioAudible,
+      rawDt
+    );
 
     this.hudSyncTimer += rawDt;
     if (this.hudSyncTimer >= 0.08) {
@@ -4794,60 +6047,60 @@ export class ViceCityEngine {
     let stormFactor = 0;
 
     if (weather === 'sunny') {
-      sunElevDeg = 32;
-      this.sunLight.intensity = 1.05;
-      this.sunLight.color.setHex(0xffebd2);
-      this.hemiLight.intensity = 0.34;
-      this.scene.environmentIntensity = 0.25;
-      this.renderer.toneMappingExposure = 0.56;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x8bc0ea);
-      (this.scene.fog as THREE.FogExp2).density = 0.00075;
+      sunElevDeg = 38;
+      this.sunLight.intensity = 1.15;
+      this.sunLight.color.setHex(0xfff1dc);
+      this.hemiLight.intensity = 0.48;
+      this.scene.environmentIntensity = 0.32;
+      this.renderer.toneMappingExposure = 0.72;
+      (this.scene.fog as THREE.FogExp2).color.setHex(0x8bc8f2);
+      (this.scene.fog as THREE.FogExp2).density = 0.00028;
     } else if (weather === 'sunset') {
-      sunElevDeg = 6;
+      sunElevDeg = 10;
       skyTop.setHex(0x1e3a6e);
       skyHorizon.setHex(0xe89b6c);
-      this.sunLight.intensity = 0.92;
-      this.sunLight.color.setHex(0xffab6b);
-      this.hemiLight.intensity = 0.28;
-      this.scene.environmentIntensity = 0.22;
-      this.renderer.toneMappingExposure = 0.58;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0xc97b63);
-      (this.scene.fog as THREE.FogExp2).density = 0.00105;
+      this.sunLight.intensity = 0.98;
+      this.sunLight.color.setHex(0xffb478);
+      this.hemiLight.intensity = 0.36;
+      this.scene.environmentIntensity = 0.25;
+      this.renderer.toneMappingExposure = 0.68;
+      (this.scene.fog as THREE.FogExp2).color.setHex(0xc98468);
+      (this.scene.fog as THREE.FogExp2).density = 0.00055;
     } else if (weather === 'cloudy') {
-      sunElevDeg = 20;
+      sunElevDeg = 24;
       skyTop.setHex(0x38465a);
       skyHorizon.setHex(0x7a8a9e);
       stormFactor = 0.4;
-      this.sunLight.intensity = 0.52;
+      this.sunLight.intensity = 0.68;
       this.sunLight.color.setHex(0xcbd5e1);
-      this.hemiLight.intensity = 0.30;
-      this.scene.environmentIntensity = 0.18;
-      this.renderer.toneMappingExposure = 0.54;
+      this.hemiLight.intensity = 0.40;
+      this.scene.environmentIntensity = 0.22;
+      this.renderer.toneMappingExposure = 0.68;
       (this.scene.fog as THREE.FogExp2).color.setHex(0x78889c);
-      (this.scene.fog as THREE.FogExp2).density = 0.00125;
+      (this.scene.fog as THREE.FogExp2).density = 0.00075;
     } else {
-      sunElevDeg = 5;
+      sunElevDeg = 8;
       skyTop.setHex(0x16202e);
       skyHorizon.setHex(0x3b495c);
       stormFactor = weather === 'storm' ? 1 : 0.72;
-      this.sunLight.intensity = 0.36 + this.lightningFlash * 1.35;
+      this.sunLight.intensity = 0.44 + this.lightningFlash * 1.35;
       this.sunLight.color.setHex(0x7da6d8);
-      this.hemiLight.intensity = 0.24 + this.lightningFlash * 0.35;
-      this.scene.environmentIntensity = 0.15;
-      this.renderer.toneMappingExposure = 0.52;
+      this.hemiLight.intensity = 0.30 + this.lightningFlash * 0.35;
+      this.scene.environmentIntensity = 0.18;
+      this.renderer.toneMappingExposure = 0.64;
       (this.scene.fog as THREE.FogExp2).color.setHex(0x283240);
-      (this.scene.fog as THREE.FogExp2).density = weather === 'storm' ? 0.0018 : 0.0014;
+      (this.scene.fog as THREE.FogExp2).density = weather === 'storm' ? 0.0012 : 0.00095;
     }
 
     const hrs = Math.floor(this.timeNormalized * 24);
     const isNight = hrs >= 20 || hrs < 6;
     if (isNight) {
       sunElevDeg = -2;
-      this.sunLight.intensity = 0.22 + this.lightningFlash * 1.1;
+      this.sunLight.intensity = 0.28 + this.lightningFlash * 1.1;
       this.sunLight.color.setHex(0x88b0e6);
-      this.hemiLight.intensity = 0.18 + this.lightningFlash * 0.28;
-      this.scene.environmentIntensity = 0.14;
-      this.renderer.toneMappingExposure = 0.62;
+      this.hemiLight.intensity = 0.22 + this.lightningFlash * 0.28;
+      this.scene.environmentIntensity = 0.16;
+      this.renderer.toneMappingExposure = 0.68;
       skyTop.setHex(0x091324);
       skyHorizon.setHex(0x1b2e4a);
       (this.scene.fog as THREE.FogExp2).color.setHex(0x142238);
@@ -4858,9 +6111,9 @@ export class ViceCityEngine {
     _v1.setFromSphericalCoords(1, phi, theta);
     if (this.envSky?.skyUniforms) {
       this.envSky.skyUniforms['sunPosition'].value.copy(_v1);
-      this.envSky.skyUniforms['turbidity'].value = isRaining ? 9.5 : weather === 'sunset' ? 6.5 : 2.6;
-      this.envSky.skyUniforms['rayleigh'].value = isNight ? 0.45 : weather === 'sunset' ? 2.6 : isRaining ? 0.7 : 2.1;
-      this.envSky.skyUniforms['mieCoefficient'].value = weather === 'sunset' ? 0.004 : 0.002;
+      this.envSky.skyUniforms['turbidity'].value = isRaining ? 7.5 : weather === 'sunset' ? 4.8 : 2.2;
+      this.envSky.skyUniforms['rayleigh'].value = isNight ? 0.45 : weather === 'sunset' ? 2.1 : isRaining ? 0.7 : 1.45;
+      this.envSky.skyUniforms['mieCoefficient'].value = weather === 'sunset' ? 0.0018 : 0.0006;
       this.envSky.sky.position.set(p.x, 0, p.z);
     }
     if (this.oceanWater) {
@@ -4881,7 +6134,7 @@ export class ViceCityEngine {
 
     const bridgeInfo = getBridgeDeckInfo(p.x, p.z);
     const groundFloor = getTerrainHeightAt(p.x, p.z);
-    const inOceanZone = isWaterChannel(p.x, p.z) && !bridgeInfo.onBridge && !p.parachuting && p.y <= 0.35;
+    const inOceanZone = isWaterSurfaceAt(p.x, p.z) && !bridgeInfo.onBridge && !p.parachuting && p.y <= LAND_Y + 0.25;
     p.inWater = inOceanZone;
 
     let moveX = 0;
@@ -4918,8 +6171,8 @@ export class ViceCityEngine {
       const len = Math.max(0.01, Math.hypot(mx, mz));
       const nx = mx / len;
       const nz = mz / len;
-      const nextX = THREE.MathUtils.clamp(p.x + nx * baseSpeed * dt, -600, 680);
-      const nextZ = THREE.MathUtils.clamp(p.z + nz * baseSpeed * dt, -560, 560);
+      const nextX = THREE.MathUtils.clamp(p.x + nx * baseSpeed * dt, -2700, 3000);
+      const nextZ = THREE.MathUtils.clamp(p.z + nz * baseSpeed * dt, -2750, 2750);
 
       if (p.parachuting || !this.collidesWithSolidWall(nextX, p.z, 0.44)) p.x = nextX;
       if (p.parachuting || !this.collidesWithSolidWall(p.x, nextZ, 0.44)) p.z = nextZ;
@@ -4931,6 +6184,9 @@ export class ViceCityEngine {
       this.walkPhase += dt * (sprinting ? 14 : 9);
     } else {
       this.walkPhase = 0;
+      if (this.aiming && !p.parachuting) {
+        p.yaw = this.dampAngle(p.yaw, Math.atan2(fwdX, fwdZ), 16, dt);
+      }
     }
 
     if (!p.parachuting) {
@@ -4940,7 +6196,7 @@ export class ViceCityEngine {
     if (p.parachuting) {
       p.actionState = 'parachute';
       p.y -= 5.2 * dt;
-      const landingFloor = Math.max(0, groundFloor);
+      const landingFloor = Math.max(LAND_Y, groundFloor);
       if (p.y <= landingFloor + 0.02) {
         p.y = landingFloor;
         p.parachuting = false;
@@ -4950,12 +6206,12 @@ export class ViceCityEngine {
         this.showToast('Parachute Touchdown!');
       }
     } else if (inOceanZone) {
-      const waveY = getWaterWaveHeight(p.x, p.z, this.elapsedSec, this.currentStormFactor);
-      if (this.keys['KeyC']) p.y = Math.max(-2.9, p.y - dt * 3.2);
-      else if (this.keys['Space']) p.y = Math.min(waveY - 0.15, p.y + dt * 3.4);
-      else p.y = THREE.MathUtils.damp(p.y, p.y < -0.9 ? p.y : waveY - 0.3, 4, dt);
+      const waveY = getWaterWaveHeight(p.x, p.z, this.elapsedSec, this.currentStormFactor) - 0.35;
+      if (this.keys['KeyC']) p.y = Math.max(-3.4, p.y - dt * 3.2);
+      else if (this.keys['Space']) p.y = Math.min(waveY - 0.12, p.y + dt * 3.4);
+      else p.y = THREE.MathUtils.damp(p.y, p.y < waveY - 0.52 ? p.y : waveY - 0.28, 4, dt);
 
-      p.underwater = p.y < -0.95;
+      p.underwater = p.y < waveY - 0.55;
       p.actionState = p.underwater ? 'dive_water' : 'swim';
       if (p.underwater) {
         p.oxygen = Math.max(0, p.oxygen - dt * 6.5);
@@ -4988,7 +6244,7 @@ export class ViceCityEngine {
       }
       this.playerVy -= 20 * dt;
       p.y += this.playerVy * dt;
-      const floorH = groundFloor > 0 ? groundFloor : LAND_Y;
+      const floorH = groundFloor > -1.0 ? groundFloor : LAND_Y;
       if (p.y <= floorH) {
         p.y = floorH;
         this.playerVy = 0;
@@ -5038,7 +6294,7 @@ export class ViceCityEngine {
     }
     // Size-accurate OBB collision against vehicles!
     for (const v of this.vehicles) {
-      if (v === this.drivingVehicle || v.y > 1.8) continue;
+      if (v === this.drivingVehicle || v.y > LAND_Y + 1.5) continue;
       const cos = Math.cos(-v.yaw);
       const sin = Math.sin(-v.yaw);
       const dx = p.x - v.x;
@@ -5087,18 +6343,25 @@ export class ViceCityEngine {
         !isActive && this.relationship.partnerInVehicleId
           ? this.vehicles.find((vh) => vh.state.id === this.relationship.partnerInVehicleId) || null
           : null;
-      const activeVeh = isDriverInVeh ? this.drivingVehicle : partnerVeh;
+      const isTaxiPassenger = isActive && this.taxiRide.status === 'driving_to_dest' && Boolean(this.taxiVehicle);
+      const activeVeh = isDriverInVeh ? this.drivingVehicle : isTaxiPassenger ? this.taxiVehicle : partnerVeh;
 
-      rig.root.visible = true;
+      rig.root.visible = !(isActive && this.aiming && state.equippedWeaponId === 'sniper' && !activeVeh);
 
-      const ridingBike = Boolean(activeVeh && activeVeh.state.tier === 'bike');
+      const ridingBike = Boolean(
+        activeVeh &&
+          (activeVeh.state.tier === 'bike' || activeVeh.state.tier === 'sportbike' || activeVeh.state.tier === 'scooty')
+      );
       let renderX = state.x;
       let renderY = state.y;
       let renderZ = state.z;
       let renderYaw = state.yaw;
 
       if (activeVeh) {
-        const seatPos = this.getVehicleSeatWorldPos(activeVeh, isDriverInVeh ? activeVeh.state.seat : 'passenger');
+        const seatPos = this.getVehicleSeatWorldPos(
+          activeVeh,
+          isDriverInVeh ? activeVeh.state.seat : 'passenger'
+        );
         renderX = seatPos.x;
         renderY = seatPos.y;
         renderZ = seatPos.z;
@@ -5108,7 +6371,7 @@ export class ViceCityEngine {
 
       rig.root.position.set(renderX, renderY, renderZ);
       rig.root.rotation.y = renderYaw;
-      if (activeVeh && (activeVeh.state.tier === 'bike' || activeVeh.state.tier === 'boat')) {
+      if (activeVeh && (ridingBike || activeVeh.state.tier === 'boat')) {
         rig.root.rotation.z = activeVeh.rig.chassisGroup.rotation.z * 0.7;
         rig.root.rotation.x = activeVeh.rig.chassisGroup.rotation.x * 0.7;
       } else {
@@ -5371,7 +6634,7 @@ export class ViceCityEngine {
       if (!this.collidesWithSolidWall(partner.x, nextZ, 0.4)) partner.z = nextZ;
       else partner.x += (nx >= 0 ? 1 : -1) * speed * 0.6 * dt;
       const floorY = getTerrainHeightAt(partner.x, partner.z);
-      partner.y = THREE.MathUtils.damp(partner.y, floorY > 0 ? floorY : player.y, 8, dt);
+      partner.y = THREE.MathUtils.damp(partner.y, floorY > -1.0 ? floorY : player.y, 8, dt);
       partner.yaw = Math.atan2(nx, nz);
 
       const swing = Math.sin(this.elapsedSec * 11) * 0.5;
@@ -5394,7 +6657,7 @@ export class ViceCityEngine {
     const isBoat = s.tier === 'boat';
     const isHeli = s.tier === 'heli';
     const isPlane = s.tier === 'plane';
-    const isBike = s.tier === 'bike';
+    const isBike = s.tier === 'bike' || s.tier === 'sportbike' || s.tier === 'scooty';
 
     const accelInput =
       (this.keys['KeyW'] ? 1 : 0) -
@@ -5463,13 +6726,13 @@ export class ViceCityEngine {
     const dirZ = Math.cos(veh.yaw);
     veh.vx = dirX * s.speed;
     veh.vz = dirZ * s.speed;
-    const nextX = THREE.MathUtils.clamp(veh.x + veh.vx * dt, -600, 660);
-    const nextZ = THREE.MathUtils.clamp(veh.z + veh.vz * dt, -550, 550);
+    const nextX = THREE.MathUtils.clamp(veh.x + veh.vx * dt, -2700, 3000);
+    const nextZ = THREE.MathUtils.clamp(veh.z + veh.vz * dt, -2750, 2750);
 
     const wallPad = Math.max(veh.rig.halfWidth, veh.rig.halfLength * 0.72);
     if (veh.y < 10) {
       if (isBoat) {
-        if (isWaterChannel(nextX, nextZ)) {
+        if (isWaterSurfaceAt(nextX, nextZ)) {
           veh.x = nextX;
           veh.z = nextZ;
         } else {
@@ -5477,7 +6740,7 @@ export class ViceCityEngine {
         }
       } else {
         const nextBridge = getBridgeDeckInfo(nextX, nextZ);
-        if (!nextBridge.onBridge && isWaterChannel(nextX, nextZ) && !isHeli && !isPlane) {
+        if (!nextBridge.onBridge && isWaterSurfaceAt(nextX, nextZ) && !isHeli && !isPlane) {
           // Keep land vehicles out of deep water channel unless on Grand Highway Bridge!
           s.speed *= -0.35;
         } else {
@@ -5507,7 +6770,7 @@ export class ViceCityEngine {
         }
         if (!isHeli && !isPlane) {
           const groundY = getTerrainHeightAt(veh.x, veh.z);
-          veh.y = THREE.MathUtils.damp(veh.y, groundY > 0 ? groundY : LAND_Y, 16, dt);
+          veh.y = THREE.MathUtils.damp(veh.y, groundY > -1.0 ? groundY : LAND_Y, 16, dt);
         }
       }
 
@@ -5553,7 +6816,8 @@ export class ViceCityEngine {
       // Rigid-Body 2D OBB SAT Vehicle-to-Vehicle Collision Physics!
       for (const other of this.vehicles) {
         if (other === veh || Math.abs(veh.y - other.y) > 2.2) continue;
-        const otherIsBike = other.state.tier === 'bike';
+        const otherIsBike =
+          other.state.tier === 'bike' || other.state.tier === 'sportbike' || other.state.tier === 'scooty';
         const otherIsBoat = other.state.tier === 'boat';
         const otherIsAir = other.state.tier === 'plane' || other.state.tier === 'heli';
         const bodyA: RigidBodyVehicleInput = {
@@ -5746,41 +7010,59 @@ export class ViceCityEngine {
 
         if (!redLightHold) {
           if (v.trafficAxis === 'z') {
-            const nz = v.z + v.trafficDir * 10.5 * dt;
+            const nz = v.z + v.trafficDir * 11.5 * dt;
             if (!this.collidesWithVehicle(v, v.x, nz)) v.z = nz;
-            if (Math.abs(v.x) < 10) {
+            if (Math.abs(v.x) < 12) {
               // Central Highway x=0 crosses Grand Leonida Bridge between Northport & Vice Downtown
-              if (v.z > 490) v.z = -490;
-              if (v.z < -490) v.z = 490;
+              if (v.z > 2600) v.z = -2600;
+              if (v.z < -2600) v.z = 2600;
             } else if (v.z > 0) {
-              if (v.z > 490) v.z = 104;
-              if (v.z < 104) v.z = 490;
+              if (v.z > 2540) v.z = 460;
+              if (v.z < 460) v.z = 2540;
             } else {
-              if (v.z > -104) v.z = -490;
-              if (v.z < -490) v.z = -104;
+              if (v.z > -460) v.z = -2540;
+              if (v.z < -2540) v.z = -460;
             }
           } else {
-            const nx = v.x + v.trafficDir * 10.5 * dt;
+            const nx = v.x + v.trafficDir * 11.5 * dt;
             if (!this.collidesWithVehicle(v, nx, v.z)) v.x = nx;
-            if (v.x > 315) v.x = -315;
-            if (v.x < -315) v.x = 315;
+            const isPrimaryEw =
+              Math.abs(v.z - 700) < 25 || Math.abs(v.z - 1400) < 25 || Math.abs(v.z - 2100) < 25 ||
+              Math.abs(v.z + 700) < 25 || Math.abs(v.z + 1400) < 25 || Math.abs(v.z + 2100) < 25;
+            const minX = isPrimaryEw ? -1660 : -1390;
+            const maxX = isPrimaryEw ? 1660 : 1610;
+            if (v.x > maxX) v.x = minX;
+            if (v.x < minX) v.x = maxX;
           }
-          v.wheelSpin += 10.5 * dt * 2.4;
+          v.wheelSpin += 11.5 * dt * 2.4;
         }
       }
 
       if ((v.isPoliceSpawn || (v.isPrecinctUnit && v.driverPresent)) && this.wanted.stars > 0 && v !== this.drivingVehicle) {
         const p = this.protagonists[this.activeId];
-        const dx = p.x - v.x;
-        const dz = p.z - v.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist > 10 && dist < 260) {
-          const targetYaw = Math.atan2(dx, dz);
-          v.yaw = this.dampAngle(v.yaw, targetYaw, 3.8, dt);
-          const pSpeed = 19 + this.wanted.stars * 2.2;
+        if (v.patrolTarget && Math.hypot(v.patrolTarget.x - v.x, v.patrolTarget.z - v.z) < 24) {
+          v.patrolTarget = null;
+        }
+        const goalX = v.patrolTarget ? v.patrolTarget.x : p.x;
+        const goalZ = v.patrolTarget ? v.patrolTarget.z : p.z;
+        const distToGoal = Math.hypot(goalX - v.x, goalZ - v.z);
+        if (distToGoal > 10 && distToGoal < 1400) {
+          let steerTargetX = goalX;
+          let steerTargetZ = goalZ;
+          if (distToGoal > 28) {
+            const route = computeGpsRoute(v.x, v.z, goalX, goalZ);
+            const wp = route[1] ?? route[0];
+            if (wp) {
+              steerTargetX = wp.x;
+              steerTargetZ = wp.z;
+            }
+          }
+          const targetYaw = Math.atan2(steerTargetX - v.x, steerTargetZ - v.z);
+          v.yaw = this.dampAngle(v.yaw, targetYaw, 4.2, dt);
+          const pSpeed = 20 + this.wanted.stars * 2.4;
           const nx = v.x + Math.sin(v.yaw) * pSpeed * dt;
           const nz = v.z + Math.cos(v.yaw) * pSpeed * dt;
-          const onLandOrBridge = !isWaterChannel(nx, nz) || getBridgeDeckInfo(nx, nz).onBridge;
+          const onLandOrBridge = !isWaterSurfaceAt(nx, nz) || getBridgeDeckInfo(nx, nz).onBridge;
           if (onLandOrBridge && !this.collidesWithSolidWall(nx, nz, 1.45) && !this.collidesWithVehicle(v, nx, nz)) {
             v.x = nx;
             v.z = nz;
@@ -5793,7 +7075,7 @@ export class ViceCityEngine {
 
       if (v !== this.drivingVehicle && v.state.tier !== 'boat' && v.state.tier !== 'plane' && v.state.tier !== 'heli') {
         const terrainY = getTerrainHeightAt(v.x, v.z);
-        if (terrainY > 0) v.y = terrainY;
+        if (terrainY > -1.0) v.y = terrainY;
       }
 
       v.rig.root.position.set(v.x, v.y, v.z);
@@ -5807,7 +7089,7 @@ export class ViceCityEngine {
         v.leftDoorAngle,
         v.rightDoorAngle,
         v === this.drivingVehicle,
-        v.y > 0.65,
+        v.y > LAND_Y + 0.35,
         this.elapsedSec,
         this.blinkerBlinkState,
         this.wanted.stars,
@@ -5858,11 +7140,11 @@ export class ViceCityEngine {
       if (activeCops < targetCops && this.policeSpawnTimer > 2.2) {
         this.policeSpawnTimer = 0;
         const angle = Math.random() * Math.PI * 2;
-        let sx = THREE.MathUtils.clamp(p.x + Math.cos(angle) * 34, -330, 330);
-        let sz = THREE.MathUtils.clamp(p.z + Math.sin(angle) * 34, -490, 490);
-        if (isWaterChannel(sx, sz) && !getBridgeDeckInfo(sx, sz).onBridge) {
+        let sx = THREE.MathUtils.clamp(p.x + Math.cos(angle) * 42, -2550, 2850);
+        let sz = THREE.MathUtils.clamp(p.z + Math.sin(angle) * 42, -2600, 2600);
+        if (isWaterSurfaceAt(sx, sz) && !getBridgeDeckInfo(sx, sz).onBridge) {
           sx = p.x;
-          sz = p.z > 0 ? Math.max(106, p.z - 22) : Math.min(-106, p.z + 22);
+          sz = p.z > 0 ? Math.max(460, p.z - 22) : Math.min(-460, p.z + 22);
         }
         const sy = Math.max(LAND_Y, getTerrainHeightAt(sx, sz));
         const isSwat = this.wanted.stars >= 4;
@@ -6003,7 +7285,59 @@ export class ViceCityEngine {
 
       if (npc.kind === 'cashier') {
         npc.yaw = Math.atan2(p.x - npc.x, p.z - npc.z);
+        npc.rig.root.position.set(npc.x, npc.y, npc.z);
         npc.rig.root.rotation.y = npc.yaw;
+
+        // Aim firearm at store/bank cashier to intimidate & start robbery!
+        const distCashier = Math.hypot(p.x - npc.x, p.z - npc.z);
+        if (
+          this.currentInterior &&
+          this.currentInterior.hasRegister &&
+          this.currentInterior.robbedCooldown <= 0 &&
+          this.aiming &&
+          p.equippedWeaponId !== 'fists' &&
+          p.equippedWeaponId !== 'bat' &&
+          p.equippedWeaponId !== 'grenades' &&
+          p.equippedWeaponId !== 'molotov' &&
+          distCashier < 12.5 &&
+          this.activeRobbery.stage === 'none'
+        ) {
+          const baseLoot =
+            this.currentInterior.kind === 'bank'
+              ? 4200
+              : this.currentInterior.kind === 'jewelry'
+              ? 2800
+              : 850 + Math.floor(Math.random() * 650);
+          this.activeRobbery = {
+            stage: 'intimidated',
+            cashier: npc,
+            interiorId: this.currentInterior.id,
+            amount: baseLoot,
+            timer: 0,
+          };
+          npc.fleeing = true;
+          if (!npc.hasScreamed) {
+            npc.hasScreamed = true;
+            viceAudio.playPanicScreamOnce(npc.id, true);
+          }
+          for (const civ of this.npcs) {
+            if (!civ.alive || civ === npc || civ.kind === 'police' || civ.kind === 'swat' || civ.kind === 'child' || civ.drivingCar) continue;
+            if (Math.hypot(civ.x - p.x, civ.z - p.z) < 22) {
+              civ.fleeing = true;
+              if (!civ.hasScreamed) {
+                civ.hasScreamed = true;
+                viceAudio.playPanicScreamOnce(civ.id, /sarah|sofia|elena|camila|mia/i.test(civ.name));
+              }
+            }
+          }
+          this.showToast(`${npc.name} panicked! Press [Rob Cashier] to demand the Cash Bag!`);
+        }
+
+        animateNpcRig(npc.rig, 0, {
+          handsUp: Boolean(npc.fleeing && !npc.packingCash),
+          packing: Boolean(npc.packingCash),
+          timeSec: this.elapsedSec,
+        });
         continue;
       }
 
@@ -6036,12 +7370,17 @@ export class ViceCityEngine {
         npc.kind === 'civilian' &&
         this.aiming &&
         p.equippedWeaponId !== 'fists' &&
+        p.equippedWeaponId !== 'bat' &&
         distToTarget < 7.5 &&
         !npc.fleeing &&
         !npc.hostile &&
         this.hasLineOfSight(npc.x, npc.z, p.x, p.z)
       ) {
         npc.fleeing = true;
+        if (!npc.hasScreamed) {
+          npc.hasScreamed = true;
+          viceAudio.playPanicScreamOnce(npc.id, /sarah|sofia|elena|camila|mia/i.test(npc.name));
+        }
       }
 
       // Rival gang reacts defensively if player aims a firearm in their turf within 9m
@@ -6143,11 +7482,12 @@ export class ViceCityEngine {
       const weather = WEATHER_ORDER[this.weatherIndex];
       const npcRaining = (weather === 'rain' || weather === 'storm') && npc.kind === 'civilian' && !npc.fleeing && !npc.hostile;
       animateNpcRig(npc.rig, npc.walkPhase, {
-        handsUp: npc.fleeing && !npc.isWitness,
+        handsUp: npc.fleeing && !npc.isWitness && !npc.packingCash,
         calling911: npc.isWitness,
         umbrella: npcRaining,
         checkingPhone: npc.kind === 'civilian' && !npc.fleeing && !npc.isWitness && npc.walkPhase < 0.01,
         aiming: npc.hostile && npc.armed,
+        packing: Boolean(npc.packingCash),
         timeSec: this.elapsedSec,
       });
     }
@@ -6273,21 +7613,31 @@ export class ViceCityEngine {
 
   private updateWildlife(dt: number) {
     for (const wl of this.wildlifeEntries) {
-      wl.phase += dt * (wl.species === 'dolphin' ? 3.2 : 1.6);
-      if (wl.species === 'gator') {
-        const patrolX = wl.baseX + Math.sin(wl.phase * 0.45) * 9;
-        const patrolZ = wl.baseZ + Math.cos(wl.phase * 0.45) * 9;
+      wl.phase += dt * (wl.species === 'dolphin' ? 3.2 : wl.species === 'bird' ? 2.4 : 1.6);
+      if (wl.species === 'bird') {
+        const patrolX = wl.baseX + Math.sin(wl.phase * 0.45) * 48;
+        const patrolZ = wl.baseZ + Math.cos(wl.phase * 0.45) * 48;
         wl.yaw = Math.atan2(patrolX - wl.x, patrolZ - wl.z);
         wl.x = patrolX;
         wl.z = patrolZ;
+        wl.rig.root.position.set(wl.x, 22 + Math.sin(wl.phase * 1.1) * 4.5, wl.z);
+      } else if (wl.species === 'gator' || wl.species === 'deer' || wl.species === 'boar') {
+        const radius = wl.species === 'gator' ? 9 : 16;
+        const patrolX = wl.baseX + Math.sin(wl.phase * 0.4) * radius;
+        const patrolZ = wl.baseZ + Math.cos(wl.phase * 0.4) * radius;
+        if (!isWaterChannel(patrolX, patrolZ)) {
+          wl.yaw = Math.atan2(patrolX - wl.x, patrolZ - wl.z);
+          wl.x = patrolX;
+          wl.z = patrolZ;
+        }
         wl.rig.root.position.set(wl.x, LAND_Y + 0.04, wl.z);
       } else {
-        const patrolX = wl.baseX + Math.sin(wl.phase * 0.35) * 26;
-        const patrolZ = wl.baseZ + Math.cos(wl.phase * 0.35) * 26;
+        const patrolX = wl.baseX + Math.sin(wl.phase * 0.35) * 28;
+        const patrolZ = wl.baseZ + Math.cos(wl.phase * 0.35) * 28;
         wl.yaw = Math.atan2(patrolX - wl.x, patrolZ - wl.z);
         wl.x = patrolX;
         wl.z = patrolZ;
-        const waveY = getWaterWaveHeight(wl.x, wl.z, this.elapsedSec, this.currentStormFactor);
+        const waveY = getWaterWaveHeight(wl.x, wl.z, this.elapsedSec, this.currentStormFactor) - 0.35;
         const jumpY = wl.species === 'dolphin' ? Math.max(-0.5, Math.sin(wl.phase * 1.4) * 1.35) : -0.35;
         wl.rig.root.position.set(wl.x, waveY + jumpY, wl.z);
       }
@@ -6430,6 +7780,12 @@ export class ViceCityEngine {
         const nx = (npc.x - x) / Math.max(0.1, d);
         const nz = (npc.z - z) / Math.max(0.1, d);
         this.damageNpc(npc, maxDamage, false, this.activeId, nx * 14, nz * 14);
+      } else if (d < radius * 3.0 && npc.kind === 'civilian') {
+        npc.fleeing = true;
+        if (!npc.hasScreamed) {
+          npc.hasScreamed = true;
+          viceAudio.playPanicScreamOnce(npc.id, /sarah|sofia|elena|camila|mia/i.test(npc.name));
+        }
       }
     }
     for (const veh of this.vehicles) {
@@ -6452,7 +7808,8 @@ export class ViceCityEngine {
       const cp = this.cashPickups[i];
       cp.life -= dt;
       cp.mesh.rotation.y += dt * 2.6;
-      cp.mesh.position.y = 0.28 + Math.sin(this.elapsedSec * 4) * 0.08;
+      const groundY = Math.max(LAND_Y, getTerrainHeightAt(cp.x, cp.z));
+      cp.mesh.position.y = groundY + 0.28 + Math.sin(this.elapsedSec * 4) * 0.08;
 
       if (Math.hypot(cp.x - p.x, cp.z - p.z) < 1.9) {
         this.cash += cp.amount;
@@ -6477,18 +7834,18 @@ export class ViceCityEngine {
       t.z += t.vz * dt;
       t.mesh.position.set(t.x, t.y, t.z);
 
-      let remove = t.life <= 0;
+      let remove = t.life <= 0 || (t.y < 8 && this.collidesWithSolidWall(t.x, t.z, 0.12));
       if (!remove && t.fromPlayer) {
         for (const npc of this.npcs) {
           if (!npc.alive || npc.kind === 'child' || npc.drivingCar) continue;
-          if (Math.hypot(t.x - npc.x, t.z - npc.z) < 0.85) {
+          if (Math.hypot(t.x - npc.x, t.z - npc.z) < 0.85 && t.y >= npc.y - 0.15 && t.y <= npc.y + 1.95) {
             this.damageNpc(npc, t.damage, false, this.activeId);
             remove = true;
             break;
           }
         }
       } else if (!remove && !t.fromPlayer && !this.drivingVehicle) {
-        if (Math.hypot(t.x - p.x, t.z - p.z) < 0.75) {
+        if (Math.hypot(t.x - p.x, t.z - p.z) < 0.75 && t.y >= p.y - 0.15 && t.y <= p.y + 1.95) {
           this.damageProtagonist(this.activeId, t.damage, null);
           remove = true;
         }
@@ -6564,6 +7921,14 @@ export class ViceCityEngine {
     this.contextKind = null;
     this.nearbyVehicle = null;
     this.nearbyTrunkVehicle = null;
+    this.canEatAtBurgerShop =
+      !this.drivingVehicle &&
+      (this.currentInterior?.kind === 'burgershot' ||
+        STREET_STALLS.some((st) => st.kind === 'burger' && Math.hypot(p.x - st.x, p.z - st.z) < 6.0));
+    this.canInvitePartnerSit =
+      !this.drivingVehicle &&
+      !partner.isSitting &&
+      SEAT_SPOTS.some((s) => Math.hypot(p.x - s.x, p.z - s.z) < 8 && s.id !== p.sittingSeatId);
 
     if (!this.drivingVehicle && !p.isSitting) {
       let bestDist = 5.2;
@@ -6575,6 +7940,84 @@ export class ViceCityEngine {
           this.nearbyTrunkVehicle = v;
         }
       }
+    }
+
+    if (this.activeRobbery.stage === 'bag_ready' && this.currentInterior?.id === this.activeRobbery.interiorId) {
+      this.contextKind = 'take_cash_bag';
+      this.contextPrompt = `${kE}Take Cash (+$${this.activeRobbery.amount.toLocaleString()})`;
+      this.contextActionLabel = 'Take Cash';
+      this.contextAction = () => this.collectRobberyBag();
+      return;
+    }
+
+    if (this.activeRobbery.stage === 'intimidated' && this.currentInterior?.id === this.activeRobbery.interiorId) {
+      this.contextKind = 'rob_cashier';
+      this.contextPrompt = `${kE}Rob Cashier (${this.activeRobbery.cashier?.name ?? 'Clerk'})`;
+      this.contextActionLabel = 'Rob Cashier';
+      this.contextAction = () => {
+        this.activeRobbery.stage = 'packing';
+        this.activeRobbery.timer = 3.2;
+        if (this.activeRobbery.cashier) this.activeRobbery.cashier.packingCash = true;
+        this.spawnRobberyBagOnCounter(this.activeRobbery.interiorId);
+        this.showToast(`${this.activeRobbery.cashier?.name ?? 'Clerk'} is packing the Cash Bag on the counter...`);
+        this.pushHud();
+      };
+      return;
+    }
+
+    if (
+      !this.drivingVehicle &&
+      this.taxiRide.status === 'waiting_board' &&
+      this.taxiVehicle &&
+      Math.hypot(p.x - this.taxiVehicle.x, p.z - this.taxiVehicle.z) < 8.0
+    ) {
+      this.contextKind = 'taxi_stand';
+      this.contextPrompt = `${kE}Board Smart Taxi to ${this.taxiRide.destLabel}`;
+      this.contextActionLabel = 'Board Taxi';
+      this.contextAction = () => {
+        if (!this.taxiVehicle) return;
+        this.taxiVehicle.rightDoorTimer = 0.65;
+        viceAudio.playDoorLatch();
+        this.taxiRide.status = 'driving_to_dest';
+        p.isSitting = false;
+        p.crouching = false;
+        p.prone = false;
+        p.actionState = 'sit_drive';
+        this.pushHud();
+      };
+      return;
+    }
+
+    if (
+      this.burgerJob.activeDelivery &&
+      Math.hypot(p.x - this.burgerJob.activeDelivery.targetX, p.z - this.burgerJob.activeDelivery.targetZ) < 10.5
+    ) {
+      const del = this.burgerJob.activeDelivery;
+      if (this.drivingVehicle) {
+        this.contextPrompt = hideHints
+          ? `Exit at door to Deliver Burger (+$${del.reward})`
+          : `[F] Exit Scooty & Deliver Burger to ${del.customerName}`;
+        return;
+      }
+      this.contextKind = 'deliver_burger';
+      this.contextPrompt = `${kE}Deliver Burger Package to ${del.customerName} (+$${del.reward})`;
+      this.contextActionLabel = 'Deliver';
+      this.contextAction = () => {
+        if (!this.burgerJob.activeDelivery) return;
+        this.cash += this.burgerJob.activeDelivery.reward;
+        this.burgerJob.shiftsCompleted++;
+        this.clout += 45;
+        p.carryingBurgerBox = false;
+        const cName = this.burgerJob.activeDelivery.customerName;
+        const rwd = this.burgerJob.activeDelivery.reward;
+        this.burgerJob.activeDelivery = null;
+        this.waypoint = null;
+        this.removeDeliveryBeacon();
+        viceAudio.playCashRegister();
+        this.showToast(`Delivered hot Bleeder Combo to ${cName}! +$${rwd}`);
+        this.pushHud();
+      };
+      return;
     }
 
     if (p.isSitting && this.currentSeat) {
@@ -6602,6 +8045,7 @@ export class ViceCityEngine {
     if (!this.drivingVehicle) {
       for (const seat of SEAT_SPOTS) {
         if (Math.hypot(p.x - seat.x, p.z - seat.z) < 2.0) {
+          this.contextKind = 'seat';
           this.contextPrompt = `${kE}Sit on ${seat.label}`;
           this.contextActionLabel = 'Sit Down';
           this.contextAction = () => this.sitDownAt(seat);
@@ -6614,15 +8058,13 @@ export class ViceCityEngine {
       const info = this.currentInterior;
       // Jason's Villa interactive King Bed (Sleep at Night!) & Home Gym!
       if (info.kind === 'safehouse') {
-        // Bed at (217.2, 203.8)
-        if (Math.hypot(p.x - 217.2, p.z - 203.8) < 3.0) {
+        if (Math.hypot(p.x - 1057.2, p.z - 1043.8) < 3.0) {
           this.contextPrompt = `${kE}Sleep in King Bed (Advance to Morning & Full HP)`;
           this.contextActionLabel = 'Sleep';
           this.contextAction = () => this.sleepAtVillaBed();
           return;
         }
-        // Home Gym at (220.5, 215.2)
-        if (Math.hypot(p.x - 220.5, p.z - 215.2) < 3.0) {
+        if (Math.hypot(p.x - 1060.5, p.z - 1055.2) < 3.0) {
           const gymAct = this.activities.find((a) => a.id === 'act_boxing');
           if (gymAct) {
             this.contextPrompt = `${kE}Work Out at Villa Private Home Gym`;
@@ -6638,6 +8080,7 @@ export class ViceCityEngine {
       }
 
       if (info.kind === 'clothes') {
+        this.contextKind = 'shop';
         this.contextPrompt = `${kE}Browse ${info.name} (Outfits & Disguise)`;
         this.contextActionLabel = 'Clothes Store';
         this.contextAction = () => this.openModal('clothes', { interior: info });
@@ -6645,6 +8088,7 @@ export class ViceCityEngine {
       }
 
       if (info.kind === 'bungalow') {
+        this.contextKind = 'door';
         this.contextPrompt = `${kE}Tropical Bungalow Estate (${info.name})`;
         this.contextActionLabel = 'Bungalow';
         this.contextAction = () => this.openModal('bungalow', { interior: info });
@@ -6652,8 +8096,60 @@ export class ViceCityEngine {
       }
 
       if (info.kind === 'burgershot') {
-        this.contextPrompt = `${kE}Burger Shot Career Counter (Work Shifts, Grill, Mop, Scooter Delivery or Chaos!)`;
-        this.contextActionLabel = 'Burger Shot Counter';
+        if (this.burgerJob.clockedIn && this.burgerJob.role === 'kitchen') {
+          if (Math.hypot(p.x - BURGER_SHOT_STATIONS.grill.x, p.z - BURGER_SHOT_STATIONS.grill.z) < 2.6) {
+            this.contextPrompt = `${kE}Flip Burger Patties on Flat-Top Grill`;
+            this.contextActionLabel = 'Grill Patties';
+            this.contextAction = () => {
+              this.burgerJob.kitchenPhase = 'need_assemble';
+              this.burgerJob.grillProgress = 100;
+              p.actionState = 'cook';
+              this.actionTimer = 0.8;
+              viceAudio.playImpact(false);
+              this.showToast('Patties grilled! Walk to Assembly Table to pack!');
+              this.pushHud();
+            };
+            return;
+          }
+          if (
+            this.burgerJob.kitchenPhase === 'need_assemble' &&
+            Math.hypot(p.x - BURGER_SHOT_STATIONS.assembly.x, p.z - BURGER_SHOT_STATIONS.assembly.z) < 2.6
+          ) {
+            this.contextPrompt = `${kE}Assemble Fresh Vice Burger Box`;
+            this.contextActionLabel = 'Assemble Burger';
+            this.contextAction = () => {
+              this.burgerJob.kitchenPhase = 'need_serve';
+              p.carryingBurgerBox = true;
+              p.actionState = 'cook';
+              this.actionTimer = 0.6;
+              viceAudio.playUiChime(true);
+              this.showToast('Burger Box packed! Bring to Customer Pickup Counter!');
+              this.pushHud();
+            };
+            return;
+          }
+          if (
+            this.burgerJob.kitchenPhase === 'need_serve' &&
+            Math.hypot(p.x - BURGER_SHOT_STATIONS.counter.x, p.z - BURGER_SHOT_STATIONS.counter.z) < 2.6
+          ) {
+            this.contextPrompt = `${kE}Serve Customer Order (+$25)`;
+            this.contextActionLabel = 'Serve +$25';
+            this.contextAction = () => {
+              this.burgerJob.kitchenPhase = 'need_grill';
+              this.burgerJob.grillProgress = 0;
+              this.burgerJob.shiftsCompleted++;
+              this.cash += 25;
+              p.carryingBurgerBox = false;
+              viceAudio.playCashRegister();
+              this.showToast('Served Customer Order! +$25');
+              this.pushHud();
+            };
+            return;
+          }
+        }
+        this.contextKind = 'shop';
+        this.contextPrompt = `${kE}Burger Shot Counter (Work Kitchen, Scooty Delivery, Eat $15 or Chaos!)`;
+        this.contextActionLabel = 'Burger Shot';
         this.contextAction = () => this.openModal('burgerjob', { interior: info });
         return;
       }
@@ -6662,6 +8158,7 @@ export class ViceCityEngine {
         const atmX = info.x + info.width * 0.36;
         const atmZ = info.z + info.depth * 0.18;
         if (Math.hypot(p.x - atmX, p.z - atmZ) < 3.6 || !info.hasRegister || info.robbedCooldown > 0) {
+          this.contextKind = 'shop';
           this.contextPrompt = `${kE}Leonida Reserve Bank & Vault ATM (Deposit / Withdraw / Buy Businesses)`;
           this.contextActionLabel = 'Bank ATM';
           this.contextAction = () => this.openModal('bank', { interior: info });
@@ -6670,6 +8167,7 @@ export class ViceCityEngine {
       }
 
       if (info.kind === 'gunshop') {
+        this.contextKind = 'shop';
         this.contextPrompt = `${kE}Vice Armory Gun Shop (Buy Guns, Attachments, Trauma Kits & Upgrades)`;
         this.contextActionLabel = 'Gun Shop';
         this.contextAction = () => this.openModal('gunshop', { interior: info });
@@ -6687,12 +8185,14 @@ export class ViceCityEngine {
         }
       }
       if (info.kind === 'barber') {
+        this.contextKind = 'shop';
         this.contextPrompt = `${kE}Open Barber & Shave / Disguise`;
         this.contextActionLabel = 'Barber';
         this.contextAction = () => this.openModal('wardrobe', { interior: info });
         return;
       }
       if (info.kind === 'pawn') {
+        this.contextKind = 'shop';
         this.contextPrompt = `${kE}Trade with Uncle Jack Fence (Key Cloner / Guns)`;
         this.contextActionLabel = 'Fence Shop';
         this.contextAction = () => this.openModal('wardrobe', { interior: info, isFenceShop: true });
@@ -6701,6 +8201,7 @@ export class ViceCityEngine {
       if (info.activityId) {
         const act = this.activities.find((a) => a.id === info.activityId);
         if (act) {
+          this.contextKind = 'activity';
           this.contextPrompt = `${kE}Start ${act.name}`;
           this.contextActionLabel = act.name;
           this.contextAction = () => this.openModal('minigame', { activity: act });
@@ -6708,9 +8209,29 @@ export class ViceCityEngine {
         }
       }
       if (info.hasRegister && info.robbedCooldown <= 0) {
-        this.contextPrompt = `${kE}Rob Cash Register / Intimidate Clerk`;
+        this.contextPrompt = `${kE}Rob Cash Register / Intimidate Clerk (or Aim Firearm at Clerk)`;
         this.contextActionLabel = 'Rob Store';
         this.contextAction = () => this.openModal('robbery', { interior: info });
+        return;
+      }
+    }
+
+    // International Airport Ticket Desks (Charter Flights between South Vice & Northport)
+    if (!this.drivingVehicle) {
+      for (const az of AIRPORT_ZONES) {
+        if (Math.hypot(p.x - az.ticketX, p.z - az.ticketZ) < 6.5) {
+          this.contextKind = 'airport_ticket';
+          this.contextPrompt = `${kE}Buy Vice Air Charter Ticket to ${az.destinationName} ($150)`;
+          this.contextActionLabel = 'Fly Charter ($150)';
+          this.contextAction = () => this.buyFlightTicket(az.id);
+          return;
+        }
+      }
+      if (Math.hypot(p.x - TAXI_STAND.x, p.z - TAXI_STAND.z) < 6.0) {
+        this.contextKind = 'taxi_stand';
+        this.contextPrompt = `${kE}Book Smart Taxi with UPI QR (Choose Destination on Map)`;
+        this.contextActionLabel = 'Book Smart Taxi';
+        this.contextAction = () => this.openModal('map');
         return;
       }
     }
@@ -6719,6 +8240,7 @@ export class ViceCityEngine {
     if (!this.drivingVehicle) {
       for (const isl of SAFEHOUSE_ISLANDS) {
         if (Math.hypot(p.x - isl.bungalowX, p.z - isl.bungalowZ) < 12) {
+          this.contextKind = 'door';
           this.contextPrompt = `${kE}${isl.name} Bungalow Estate (Buy / Rest / Full Health)`;
           this.contextActionLabel = `${isl.name} Bungalow`;
           this.contextAction = () => this.openModal('bungalow', { island: isl });
@@ -6741,6 +8263,7 @@ export class ViceCityEngine {
 
     for (const gs of GAS_STATIONS) {
       if (Math.hypot(p.x - gs.x, p.z - gs.z) < 7.0 && this.drivingVehicle) {
+        this.contextKind = 'fuel';
         this.contextPrompt = `${kE}Refuel / EV Charge & Repair at ${gs.name} ($80)`;
         this.contextActionLabel = 'Refuel & Repair';
         this.contextAction = () => {
@@ -6787,7 +8310,6 @@ export class ViceCityEngine {
     }
 
     if (!this.drivingVehicle) {
-
       for (const act of this.activities) {
         if (Math.hypot(act.x - p.x, act.z - p.z) < 5.5) {
           this.contextKind = 'activity';
@@ -6833,35 +8355,77 @@ export class ViceCityEngine {
 
   private updateCamera(dt: number) {
     const p = this.protagonists[this.activeId];
-    const isDriving = Boolean(this.drivingVehicle);
+    const isDriving = Boolean(this.drivingVehicle) || this.taxiRide.status === 'driving_to_dest';
     const isAir = this.drivingVehicle && (this.drivingVehicle.state.tier === 'plane' || this.drivingVehicle.state.tier === 'heli');
-    const dist = isAir ? 15.5 : isDriving ? 9.2 : this.aiming ? (p.equippedWeaponId === 'sniper' ? 2.1 : 2.8) : this.currentInterior ? 5.0 : this.slowMoActive ? 3.2 : 5.4;
-    const height = isAir ? 5.2 : isDriving ? 3.3 : this.currentInterior ? 3.2 : 2.15;
+    const isSniperAim = this.aiming && !isDriving && p.equippedWeaponId === 'sniper';
+    const isGunAim = this.aiming && !isDriving && !isSniperAim;
 
-    const focusX = p.x;
-    const focusY = p.y + (isDriving ? 1.15 : 1.48);
-    const focusZ = p.z;
-    const targetCamX = p.x + Math.sin(this.camYaw) * Math.cos(this.camPitch) * dist;
-    const targetCamY = Math.max(p.y + 0.8, p.y + height + Math.sin(this.camPitch) * dist * 0.6);
-    const targetCamZ = p.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist;
+    const fwdX = -Math.sin(this.camYaw) * Math.cos(this.camPitch);
+    const fwdY = -Math.sin(this.camPitch);
+    const fwdZ = -Math.cos(this.camYaw) * Math.cos(this.camPitch);
+    const rightX = Math.cos(this.camYaw);
+    const rightZ = -Math.sin(this.camYaw);
 
-    resolveSpringArmCameraPosition(
-      focusX,
-      focusY,
-      focusZ,
-      targetCamX,
-      targetCamY,
-      targetCamZ,
-      (x, y, z) => y < 9 && this.collidesWithSolidWall(x, z, 0.25),
-      _v1
-    );
-    const camGroundY = getTerrainHeightAt(_v1.x, _v1.z);
-    if (_v1.y < camGroundY + 0.6) _v1.y = camGroundY + 0.6;
-    const k = isDriving ? 9 : 14;
-    this.camCurrentPos.lerp(_v1, 1 - Math.exp(-k * dt));
+    if (isSniperAim) {
+      // First-person scoped sniper view from eye height looking straight along camera forward direction
+      _v1.set(p.x - Math.sin(this.camYaw) * 0.25, p.y + 1.65, p.z - Math.cos(this.camYaw) * 0.25);
+      this.camCurrentPos.lerp(_v1, 1 - Math.exp(-26 * dt));
+      _v2.set(_v1.x + fwdX * 80, _v1.y + fwdY * 80, _v1.z + fwdZ * 80);
+      this.camCurrentLook.lerp(_v2, 1 - Math.exp(-26 * dt));
+    } else if (isGunAim) {
+      // Over-the-right-shoulder aim (+0.85 right, +1.65 up), looking forward along camera forward direction (never at player's head)
+      const shoulderX = p.x + rightX * 0.85;
+      const shoulderY = p.y + 1.65;
+      const shoulderZ = p.z + rightZ * 0.85;
+      const aimDist = 2.35;
+      const targetCamX = shoulderX - fwdX * aimDist;
+      const targetCamY = Math.max(p.y + 0.75, shoulderY - fwdY * aimDist);
+      const targetCamZ = shoulderZ - fwdZ * aimDist;
 
-    _v2.set(focusX, focusY, focusZ);
-    this.camCurrentLook.lerp(_v2, 1 - Math.exp(-15 * dt));
+      resolveSpringArmCameraPosition(
+        shoulderX,
+        shoulderY,
+        shoulderZ,
+        targetCamX,
+        targetCamY,
+        targetCamZ,
+        (x, y, z) => y < 9 && this.collidesWithSolidWall(x, z, 0.22),
+        _v1
+      );
+      const camGroundY = getTerrainHeightAt(_v1.x, _v1.z);
+      if (_v1.y < camGroundY + 0.45) _v1.y = camGroundY + 0.45;
+      this.camCurrentPos.lerp(_v1, 1 - Math.exp(-18 * dt));
+
+      _v2.set(shoulderX + fwdX * 50, shoulderY + fwdY * 50, shoulderZ + fwdZ * 50);
+      this.camCurrentLook.lerp(_v2, 1 - Math.exp(-20 * dt));
+    } else {
+      const dist = isAir ? 15.5 : isDriving ? 9.2 : this.currentInterior ? 5.0 : this.slowMoActive ? 3.2 : 5.4;
+      const height = isAir ? 5.2 : isDriving ? 3.3 : this.currentInterior ? 3.2 : 2.15;
+      const focusX = p.x;
+      const focusY = p.y + (isDriving ? 1.15 : 1.48);
+      const focusZ = p.z;
+      const targetCamX = focusX + Math.sin(this.camYaw) * Math.cos(this.camPitch) * dist;
+      const targetCamY = Math.max(p.y + 0.8, p.y + height + Math.sin(this.camPitch) * dist * 0.6);
+      const targetCamZ = focusZ + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist;
+
+      resolveSpringArmCameraPosition(
+        focusX,
+        focusY,
+        focusZ,
+        targetCamX,
+        targetCamY,
+        targetCamZ,
+        (x, y, z) => y < 9 && this.collidesWithSolidWall(x, z, 0.25),
+        _v1
+      );
+      const camGroundY = getTerrainHeightAt(_v1.x, _v1.z);
+      if (_v1.y < camGroundY + 0.6) _v1.y = camGroundY + 0.6;
+      const k = isDriving ? 9 : 14;
+      this.camCurrentPos.lerp(_v1, 1 - Math.exp(-k * dt));
+
+      _v2.set(focusX, focusY, focusZ);
+      this.camCurrentLook.lerp(_v2, 1 - Math.exp(-15 * dt));
+    }
 
     if (this.cameraShake > 0.005) {
       this.cameraShake = THREE.MathUtils.damp(this.cameraShake, 0, 12, dt);
@@ -6876,8 +8440,8 @@ export class ViceCityEngine {
 
     const targetFov = this.aiming
       ? p.equippedWeaponId === 'sniper'
-        ? 18
-        : 42
+        ? 16
+        : 44
       : this.slowMoActive
       ? 48
       : isDriving && this.drivingVehicle
@@ -6893,6 +8457,11 @@ export class ViceCityEngine {
   }
 
   private collidesWithSolidWall(x: number, z: number, radius: number): boolean {
+    for (const fw of AIRPORT_FENCE_WALLS) {
+      if (Math.abs(x - fw.cx) < fw.hx + radius && Math.abs(z - fw.cz) < fw.hz + radius) {
+        return true;
+      }
+    }
     for (const b of this.worldBuildings) {
       const halfW = b.w / 2 + radius;
       const halfD = b.d / 2 + radius;
@@ -6925,22 +8494,28 @@ export class ViceCityEngine {
     const minimapEntities: MinimapEntity[] = [];
     minimapEntities.push({ x: partner.x, z: partner.z, kind: 'partner', label: partner.name });
     minimapEntities.push({ x: CENTRAL_PARK.cx, z: CENTRAL_PARK.cz, kind: 'park', label: 'Central Park & Playground' });
-    minimapEntities.push({ x: 210, z: 210, kind: 'home', label: "Jason's Villa" });
-    minimapEntities.push({ x: 210, z: 105, kind: 'coffee', label: 'Vice Roast Coffee Shop' });
-    minimapEntities.push({ x: -210, z: 210, kind: 'bar', label: 'Neon Anchor Beer Bar' });
-    minimapEntities.push({ x: 210, z: -350, kind: 'bar', label: 'Jack of Hearts Bar' });
-    minimapEntities.push({ x: 70, z: 105, kind: 'gunshop', label: 'Vice Armory Gun Shop' });
-    minimapEntities.push({ x: -70, z: -210, kind: 'gunshop', label: 'Northport Tactical Armory' });
-    minimapEntities.push({ x: -70, z: 210, kind: 'precinct', label: 'Vice PD Precinct' });
-    minimapEntities.push({ x: 210, z: 480, kind: 'gym', label: 'Vice Iron Gym' });
-    minimapEntities.push({ x: AIRPORT_ZONE.runwayX, z: AIRPORT_ZONE.runwayZ, kind: 'airport', label: 'Leonida International Airport' });
-    minimapEntities.push({ x: 320, z: 350, kind: 'boat', label: 'Vice Marina Boats' });
-    minimapEntities.push({ x: 70, z: 210, kind: 'burgershot', label: 'Burger Shot Diner' });
-    minimapEntities.push({ x: 210, z: 350, kind: 'bank', label: 'Leonida Reserve Bank' });
-    minimapEntities.push({ x: -70, z: 105, kind: 'clothes', label: 'Vice Threads Boutique' });
-    minimapEntities.push({ x: 210, z: -210, kind: 'clothes', label: 'Northport Streetwear' });
-    minimapEntities.push({ x: 560, z: 230, kind: 'bungalow', label: 'Paradise Key Bungalow' });
-    minimapEntities.push({ x: 560, z: -230, kind: 'bungalow', label: 'Starlight Atoll Bungalow' });
+    minimapEntities.push({ x: 1050, z: 1050, kind: 'home', label: "Jason's Villa" });
+    minimapEntities.push({ x: 1050, z: 525, kind: 'coffee', label: 'Vice Roast Coffee Shop' });
+    minimapEntities.push({ x: -1050, z: 1050, kind: 'bar', label: 'Neon Anchor Beer Bar' });
+    minimapEntities.push({ x: 1050, z: -1750, kind: 'bar', label: 'Jack of Hearts Bar' });
+    minimapEntities.push({ x: 350, z: 525, kind: 'gunshop', label: 'Vice Armory Gun Shop' });
+    minimapEntities.push({ x: -350, z: -1050, kind: 'gunshop', label: 'Northport Tactical Armory' });
+    minimapEntities.push({ x: -350, z: 1050, kind: 'precinct', label: 'Vice PD Precinct' });
+    minimapEntities.push({ x: 1050, z: 2400, kind: 'gym', label: 'Vice Iron Gym' });
+    for (const az of AIRPORT_ZONES) {
+      minimapEntities.push({ x: az.runwayX, z: az.runwayZ, kind: 'airport', label: az.name });
+    }
+    minimapEntities.push({ x: TAXI_STAND.x, z: TAXI_STAND.z, kind: 'taxistand', label: TAXI_STAND.name });
+    minimapEntities.push({ x: 1620, z: 1750, kind: 'boat', label: 'Port Vice Marina Boats' });
+    minimapEntities.push({ x: 350, z: 1050, kind: 'burgershot', label: 'Burger Shot Diner' });
+    minimapEntities.push({ x: 1050, z: 1750, kind: 'bank', label: 'Leonida Reserve Bank' });
+    minimapEntities.push({ x: -350, z: 525, kind: 'clothes', label: 'Vice Threads Boutique' });
+    minimapEntities.push({ x: 1050, z: -1050, kind: 'clothes', label: 'Northport Threads' });
+    minimapEntities.push({ x: 350, z: -1050, kind: 'dealership', label: 'Vice Exotic Motors' });
+    minimapEntities.push({ x: 350, z: -525, kind: 'market', label: 'Northport Harbor Market' });
+    for (const isl of SAFEHOUSE_ISLANDS) {
+      minimapEntities.push({ x: isl.bungalowX, z: isl.bungalowZ, kind: 'bungalow', label: `${isl.name} Bungalow` });
+    }
     if (this.darkWebDrop) {
       minimapEntities.push({ x: this.darkWebDrop.x, z: this.darkWebDrop.z, kind: 'drop', label: this.darkWebDrop.label });
     }
@@ -6952,7 +8527,7 @@ export class ViceCityEngine {
       }
     }
     for (const v of this.vehicles) {
-      if (!v.isTraffic && v !== this.drivingVehicle && Math.hypot(v.x - p.x, v.z - p.z) < 120) {
+      if (!v.isTraffic && v !== this.drivingVehicle && Math.hypot(v.x - p.x, v.z - p.z) < 380) {
         minimapEntities.push({ x: v.x, z: v.z, kind: 'vehicle', label: v.state.name });
       }
     }
@@ -7009,6 +8584,12 @@ export class ViceCityEngine {
       contextPrompt: this.contextPrompt,
       contextAction: this.contextActionLabel,
       contextKind: this.contextKind,
+      robberyHud: {
+        stage: this.activeRobbery.stage,
+        cashierName: this.activeRobbery.cashier?.name ?? '',
+        amount: this.activeRobbery.amount,
+        interiorId: this.activeRobbery.interiorId,
+      },
       waypoint: this.waypoint ? { ...this.waypoint } : null,
       gpsRoute,
       activeMission: this.missions.find((m) => m.id === this.activeMissionId) ?? null,
@@ -7026,6 +8607,10 @@ export class ViceCityEngine {
       stocks: this.stocks.map((s) => ({ ...s })),
       businesses: this.businesses.map((b) => ({ ...b })),
       darkWebDrop: this.darkWebDrop ? { ...this.darkWebDrop } : null,
+      taxiRide: { ...this.taxiRide },
+      flightCutscene: this.flightCutscene ? { ...this.flightCutscene } : null,
+      canEatAtBurgerShop: this.canEatAtBurgerShop,
+      canInvitePartnerSit: this.canInvitePartnerSit,
       totalBuildingsCount: this.worldBuildings.length,
       totalInteriorsCount: this.worldInteriors.length,
       underwaterTreasureFound: this.underwaterTreasureFound,
