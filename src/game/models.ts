@@ -37,6 +37,7 @@ export interface CharacterRig {
   burgerBoxMesh: THREE.Group;
   spatulaMesh: THREE.Mesh;
   mopGroup: THREE.Group;
+  fishingRodGroup: THREE.Group;
   parachuteGroup: THREE.Group;
   witnessMarker: THREE.Mesh;
   torsoMat: THREE.MeshStandardMaterial;
@@ -497,6 +498,25 @@ export function createCharacterRig(
   mopGroup.visible = false;
   rightForearm.add(mopGroup);
 
+  // Pier Fishing Rod prop
+  const fishingRodGroup = new THREE.Group();
+  fishingRodGroup.position.set(0, -0.26, 0.14);
+  const rodShaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.012, 0.024, 2.35, 6),
+    new THREE.MeshStandardMaterial({ color: 0x0ea5e9, metalness: 0.55, roughness: 0.3 })
+  );
+  rodShaft.rotation.x = Math.PI / 3.2;
+  rodShaft.position.set(0, 0.45, 0.95);
+  const reelDrum = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.045, 0.045, 0.07, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.25 })
+  );
+  reelDrum.rotation.z = Math.PI / 2;
+  reelDrum.position.set(0.04, 0.04, 0.22);
+  fishingRodGroup.add(rodShaft, reelDrum);
+  fishingRodGroup.visible = false;
+  rightForearm.add(fishingRodGroup);
+
   const slungGun = new THREE.Group();
   slungGun.position.set(0, 1.15, -0.17);
   slungGun.rotation.z = 0.55;
@@ -592,6 +612,7 @@ export function createCharacterRig(
     burgerBoxMesh,
     spatulaMesh,
     mopGroup,
+    fishingRodGroup,
     parachuteGroup,
     witnessMarker,
     torsoMat,
@@ -622,6 +643,7 @@ export function applyCharacterAppearance(
     extendedMag?: boolean;
     inVehicle?: boolean;
     weaponVisual?: 'none' | 'gun' | 'bat' | 'rpg';
+    goldSkin?: boolean;
   }
 ) {
   const palette = OUTFIT_COLORS[outfit];
@@ -637,6 +659,21 @@ export function applyCharacterAppearance(
   rig.batMesh.visible = wVis === 'bat' && !isRidingBike && !extras?.inVehicle;
   rig.rpgMesh.visible = wVis === 'rpg' && !isRidingBike && !extras?.inVehicle;
   rig.duffelBag.visible = hasDuffelLoot && !extras?.inVehicle;
+
+  if (extras?.goldSkin !== undefined) {
+    const gunMat = (rig.heldGun.children[0] as THREE.Mesh | undefined)?.material as THREE.MeshStandardMaterial | undefined;
+    if (gunMat) {
+      if (extras.goldSkin) {
+        gunMat.color.setHex(0xfacc15);
+        gunMat.metalness = 0.94;
+        gunMat.roughness = 0.16;
+      } else {
+        gunMat.color.setHex(0x2b3038);
+        gunMat.metalness = 0.85;
+        gunMat.roughness = 0.25;
+      }
+    }
+  }
 
   if (extras) {
     rig.helmetMesh.visible = Boolean(extras.helmetOn);
@@ -2378,3 +2415,207 @@ export function createStorefrontSignMesh(
   g.add(casing, face);
   return g;
 }
+
+export function createStuntRampMesh(width: number, length: number, height: number): THREE.Group {
+  const g = new THREE.Group();
+  const slopeAngle = Math.atan2(height, length);
+  const deckLen = Math.hypot(length, height);
+
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.65, metalness: 0.35 });
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4, metalness: 0.45 });
+  const chevronMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+  const neonEdgeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+  const deckPivot = new THREE.Group();
+  deckPivot.position.set(0, 0.08, -length / 2);
+  deckPivot.rotation.x = -slopeAngle;
+
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(width, 0.22, deckLen), deckMat);
+  deck.position.set(0, 0, deckLen / 2);
+  deck.receiveShadow = true;
+  deck.castShadow = true;
+  deckPivot.add(deck);
+
+  const railL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.45, deckLen), railMat);
+  railL.position.set(-width / 2 + 0.12, 0.22, deckLen / 2);
+  const railR = railL.clone();
+  railR.position.x = width / 2 - 0.12;
+  deckPivot.add(railL, railR);
+
+  const edgeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, deckLen), neonEdgeMat);
+  edgeL.position.set(-width / 2 + 0.12, 0.48, deckLen / 2);
+  const edgeR = edgeL.clone();
+  edgeR.position.x = width / 2 - 0.12;
+  deckPivot.add(edgeL, edgeR);
+
+  for (let i = 1; i <= 4; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(width * 0.56, 0.04, 0.45), chevronMat);
+    stripe.position.set(0, 0.13, (deckLen * i) / 5);
+    deckPivot.add(stripe);
+  }
+  g.add(deckPivot);
+
+  const supportH = Math.max(0.4, height);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(width - 0.3, supportH, 0.65), deckMat);
+  backWall.position.set(0, supportH / 2, length / 2 - 0.35);
+  backWall.castShadow = true;
+  g.add(backWall);
+
+  return g;
+}
+
+export function createGoldenBriefcaseMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfacc15,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.45,
+    metalness: 0.92,
+    roughness: 0.18,
+  });
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.46, 0.22), goldMat);
+  body.position.y = 0.78;
+  body.castShadow = true;
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 12, Math.PI), handleMat);
+  handle.position.y = 1.03;
+  const halo = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 0.72, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.78 })
+  );
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = 0.05;
+  g.add(body, handle, halo);
+  return g;
+}
+
+export function createFightClubRingMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const canvasMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.72 });
+  const matCenter = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.6 });
+  const ropeRed = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+  const ropeWhite = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(18, 0.75, 18), trimMat);
+  base.position.y = 0.375;
+  base.receiveShadow = true;
+  const mat = new THREE.Mesh(new THREE.BoxGeometry(16.6, 0.08, 16.6), canvasMat);
+  mat.position.y = 0.78;
+  mat.receiveShadow = true;
+  const circle = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 3.8, 0.09, 24), matCenter);
+  circle.position.y = 0.79;
+  g.add(base, mat, circle);
+
+  const corner = 8.4;
+  const corners = [
+    [-corner, -corner, 0xef4444],
+    [corner, -corner, 0x3b82f6],
+    [corner, corner, 0xef4444],
+    [-corner, corner, 0x3b82f6],
+  ];
+  corners.forEach(([cx, cz, col]) => {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.18, 2.35, 10),
+      new THREE.MeshStandardMaterial({ color: col, roughness: 0.35, metalness: 0.4 })
+    );
+    post.position.set(cx, 1.85, cz);
+    g.add(post);
+  });
+
+  const ropeHeights = [1.28, 1.85, 2.42];
+  ropeHeights.forEach((ry, idx) => {
+    const rMat = idx === 1 ? ropeWhite : ropeRed;
+    const nRope = new THREE.Mesh(new THREE.BoxGeometry(16.8, 0.06, 0.06), rMat);
+    nRope.position.set(0, ry, -corner);
+    const sRope = nRope.clone();
+    sRope.position.z = corner;
+    const wRope = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 16.8), rMat);
+    wRope.position.set(-corner, ry, 0);
+    const eRope = wRope.clone();
+    eRope.position.x = corner;
+    g.add(nRope, sRope, wRope, eRope);
+  });
+
+  const banner = new THREE.Mesh(
+    new THREE.BoxGeometry(9.5, 0.65, 0.35),
+    new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+  );
+  banner.position.set(0, 4.1, -corner);
+  g.add(banner);
+  return g;
+}
+
+export function createCheckeredStartPostMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.3 });
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
+  const checkA = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  const checkB = new THREE.MeshBasicMaterial({ color: 0x111827 });
+
+  [-5.5, 5.5].forEach((px) => {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 5.4, 8), poleMat);
+    pole.position.set(px, 2.7, 0);
+    const topBeacon = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), beaconMat);
+    topBeacon.position.set(px, 5.5, 0);
+    g.add(pole, topBeacon);
+  });
+  const arch = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.6, 0.45), beaconMat);
+  arch.position.set(0, 5.1, 0);
+  g.add(arch);
+
+  for (let i = 0; i < 8; i++) {
+    const sq = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.75, 0.5), i % 2 === 0 ? checkA : checkB);
+    sq.position.set(-4.55 + i * 1.3, 4.45, 0);
+    g.add(sq);
+  }
+  const pad = new THREE.Mesh(
+    new THREE.RingGeometry(2.6, 3.2, 24),
+    new THREE.MeshBasicMaterial({ color: 0x22d3ee, side: THREE.DoubleSide, transparent: true, opacity: 0.78 })
+  );
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.y = 0.08;
+  g.add(pad);
+  return g;
+}
+
+export function createRaceCheckpointMesh(isFinish: boolean): THREE.Group {
+  const g = new THREE.Group();
+  const col = isFinish ? 0xfacc15 : 0x22d3ee;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(4.2, 0.24, 10, 28),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 })
+  );
+  ring.position.y = 3.6;
+  const pad = new THREE.Mesh(
+    new THREE.RingGeometry(3.2, 4.4, 24),
+    new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide, transparent: true, opacity: 0.45 })
+  );
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.y = 0.08;
+  g.add(ring, pad);
+  return g;
+}
+
+export function createArmoredCashVanRig(
+  contactShadowTex: THREE.Texture,
+  isSoftwareGl: boolean
+): VehicleRig {
+  const rig = createVehicleRig('truck', '#1e293b', contactShadowTex, isSoftwareGl);
+  const armorStripeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3, metalness: 0.5 });
+  const goldLockMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.85 });
+  const bankStripeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 2.8), armorStripeMat);
+  bankStripeL.position.set(-rig.halfWidth - 0.02, 1.35, -0.45);
+  const bankStripeR = bankStripeL.clone();
+  bankStripeR.position.x = rig.halfWidth + 0.02;
+  const rearVaultLock = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.42, 0.14), goldLockMat);
+  rearVaultLock.position.set(0, 1.32, -rig.halfLength - 0.04);
+  const roofBeacon = new THREE.Mesh(
+    new THREE.BoxGeometry(0.85, 0.18, 0.25),
+    new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+  );
+  roofBeacon.position.set(0, 2.38, 0.9);
+  rig.chassisGroup.add(bankStripeL, bankStripeR, rearVaultLock, roofBeacon);
+  return rig;
+}
+

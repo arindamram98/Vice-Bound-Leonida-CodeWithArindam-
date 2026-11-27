@@ -17,6 +17,9 @@ export interface CharacterAnimContext {
   steerAngle?: number;
   ducking?: boolean;
   vehicleTier?: VehicleTier;
+  blocking?: boolean;
+  fishing?: boolean;
+  fishingReeling?: boolean;
 }
 
 /**
@@ -51,6 +54,7 @@ export function animateProtagonistRig(
   rig.phoneMesh.visible = act === 'phone';
   rig.spatulaMesh.visible = act === 'cook';
   rig.mopGroup.visible = act === 'mop';
+  rig.fishingRodGroup.visible = Boolean(ctx.fishing) && act !== 'sit_drive';
   rig.coffeeCupMesh.visible = act === 'drink';
   rig.burgerBoxMesh.visible = Boolean(state.carryingBurgerBox) && act !== 'sit_drive' && act !== 'enter_vehicle';
 
@@ -360,6 +364,23 @@ export function animateProtagonistRig(
     rArmX = -2.05;
     rElbowX = -0.25;
     rArmZ = -0.2;
+  } else if (ctx.blocking) {
+    targetBodyY = -0.06;
+    targetBodyRotX = 0.08;
+    lArmX = -1.35;
+    rArmX = -1.35;
+    lElbowX = -1.42;
+    rElbowX = -1.42;
+    lArmZ = -0.35;
+    rArmZ = 0.35;
+    headX = 0.14;
+  } else if (ctx.fishing) {
+    const tug = ctx.fishingReeling ? Math.sin(timeSec * 16) * 0.24 : Math.sin(timeSec * 2.2) * 0.04;
+    rArmX = -0.92 + tug;
+    rElbowX = -0.62;
+    lArmX = -0.82 - tug * 0.6;
+    lElbowX = -0.88;
+    headX = 0.1;
   } else {
     // Locomotion: Idle, Walk, Sprint, Injured Limp (< 35 HP), Umbrella, Carrying Box, ADS Aim
     const isInjured = state.health < 35 || state.bleeding;
@@ -547,11 +568,14 @@ export function animateNpcRig(
     aiming?: boolean;
     shoppingBag?: boolean;
     crouching?: boolean;
+    recording?: boolean;
+    boxing?: boolean;
+    waving?: boolean;
     timeSec: number;
   }
 ) {
   rig.umbrellaGroup.visible = Boolean(options.umbrella);
-  rig.phoneMesh.visible = Boolean(options.calling911 || options.checkingPhone);
+  rig.phoneMesh.visible = Boolean(options.calling911 || options.checkingPhone || options.recording);
   rig.shoppingBagMesh.visible = Boolean(options.shoppingBag);
 
   if (options.crouching) {
@@ -599,7 +623,11 @@ export function animateNpcRig(
   }
 
   const s = Math.sin(walkPhase);
-  if (options.calling911 || options.checkingPhone) {
+  if (options.recording) {
+    rig.leftArm.rotation.x = -1.42;
+    rig.leftForearm.rotation.x = -0.42;
+    rig.headGroup.rotation.x = -0.04;
+  } else if (options.calling911 || options.checkingPhone) {
     rig.leftArm.rotation.x = -0.92;
     rig.leftForearm.rotation.x = -1.15;
     rig.headGroup.rotation.x = 0.2;
@@ -609,16 +637,29 @@ export function animateNpcRig(
   } else if (options.shoppingBag) {
     rig.leftArm.rotation.x = -0.15;
     rig.leftForearm.rotation.x = -0.25;
+  } else if (options.boxing) {
+    const jab = Math.sin(options.timeSec * 8.5);
+    rig.leftArm.rotation.x = -1.25 + jab * 0.45;
+    rig.leftForearm.rotation.x = -0.85;
   } else {
     rig.leftArm.rotation.x = -s * 0.38;
     rig.leftForearm.rotation.x = -0.32 - Math.max(0, -s) * 0.28;
     rig.headGroup.rotation.x = 0;
   }
 
-  if (options.aiming) {
+  if (options.waving) {
+    rig.rightArm.rotation.x = -2.45;
+    rig.rightArm.rotation.z = 0.25 + Math.sin(options.timeSec * 7.5) * 0.35;
+    rig.rightForearm.rotation.x = -0.25;
+  } else if (options.boxing) {
+    const cross = Math.cos(options.timeSec * 8.5);
+    rig.rightArm.rotation.x = -1.25 + cross * 0.45;
+    rig.rightForearm.rotation.x = -0.85;
+  } else if (options.aiming) {
     rig.rightArm.rotation.x = -1.25;
     rig.rightForearm.rotation.x = -0.32;
   } else {
+    rig.rightArm.rotation.z = 0;
     rig.rightArm.rotation.x = s * 0.38;
     rig.rightForearm.rotation.x = -0.32 - Math.max(0, s) * 0.28;
   }

@@ -69,6 +69,8 @@ const LANDMARKS: LandmarkItem[] = [
   { name: 'South Vice International Airport', district: 'South Vice Airport', x: -1850, z: 1365, color: '#38bdf8', tag: 'AIR-S', category: 'Services', taxiAccessible: true },
   { name: 'Northport International Airport', district: 'Northport Airport', x: -1850, z: -1365, color: '#38bdf8', tag: 'AIR-N', category: 'Services', taxiAccessible: true },
   { name: 'Port Vice Marina & Speedboats', district: 'Vice Marina', x: 1620, z: 1750, color: '#06b6d4', tag: 'BOATS', category: 'Services', taxiAccessible: true },
+  { name: 'Northport Underground Fight Club', district: 'Northport', x: -1205, z: -852, color: '#f43f5e', tag: 'FIGHT', category: 'Jobs & Chill', taxiAccessible: true },
+  { name: 'Midnight Vice Street Circuit', district: 'Vice Downtown', x: 0, z: 740, color: '#22d3ee', tag: 'RACE', category: 'Jobs & Chill', taxiAccessible: true },
 ];
 
 const CATEGORIES: MapCategory[] = ['All', 'Shops & Guns', 'Heists & Crime', 'Jobs & Chill', 'Safehouses', 'Services'];
@@ -349,6 +351,18 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint,
         drawIcon(ent.x, ent.z, '#2dd4bf', hud.activeId === 'jason' ? 'L' : 'J', hud.activeId === 'jason' ? 'Lucia' : 'Jason');
       } else if (ent.kind === 'drop') {
         drawIcon(ent.x, ent.z, '#4ade80', 'D', 'Dead-Drop');
+      } else if (ent.kind === 'event_blue') {
+        drawIcon(ent.x, ent.z, '#38bdf8', '!', ent.label || 'Event');
+      } else if (ent.kind === 'event_red') {
+        drawIcon(ent.x, ent.z, '#ef4444', '!', ent.label || 'Hostile Event');
+      } else if (ent.kind === 'fightclub') {
+        drawIcon(ent.x, ent.z, '#f43f5e', 'FC', 'Fight Club');
+      } else if (ent.kind === 'race') {
+        drawIcon(ent.x, ent.z, '#22d3ee', 'RC', 'Street Race');
+      } else if (ent.kind === 'stunt') {
+        const p = worldToScreen(ent.x, ent.z);
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(p.cx - 3, p.cy - 3, 6, 6);
       }
     }
 
@@ -608,6 +622,9 @@ export const MapModal: React.FC<MapModalProps> = ({ hud, onClose, onSetWaypoint,
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f97316] inline-block" /> Armory</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#22c55e] inline-block" /> Park / Bank</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#2dd4bf] inline-block" /> Partner</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] inline-block" /> Event</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f43f5e] inline-block" /> Fight Club</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#22d3ee] inline-block" /> Street Race</span>
           </div>
         </div>
 

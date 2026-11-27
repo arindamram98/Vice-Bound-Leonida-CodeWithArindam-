@@ -12,21 +12,27 @@ import {
   CharacterRig,
   createAirportFenceAndGateMesh,
   createAirportTicketCounterMesh,
+  createArmoredCashVanRig,
   createBillboardMesh,
   createBurgerShotInteriorGroup,
   createBusStopMesh,
   createCashPickupMesh,
   createCharacterRig,
+  createCheckeredStartPostMesh,
   createDeadDropCrateMesh,
+  createFightClubRingMesh,
+  createGoldenBriefcaseMesh,
   createJasonVillaFurnitureGroup,
   createLuxuryBungalowMesh,
   createOverWaterBridgeMesh,
   createParkBench,
   createParkFountain,
   createPlaygroundSet,
+  createRaceCheckpointMesh,
   createRoadSign,
   createStorefrontSignMesh,
   createStreetStall,
+  createStuntRampMesh,
   createTaxiStandMesh,
   createTrafficLightRig,
   createVehicleRig,
@@ -39,7 +45,9 @@ import {
 import { computeBoatBuoyancyPose, resolveVehicleOBBCollision, RigidBodyVehicleInput } from './physics';
 import { createProceduralTextures, ProceduralTextureSet } from './textures';
 import {
+  ActiveFightClubHud,
   ActiveModalType,
+  ActiveRaceHud,
   ActivityDef,
   BurgerJobState,
   BusinessProperty,
@@ -47,6 +55,8 @@ import {
   ControlSettings,
   CriminalProfile,
   DarkWebDrop,
+  DynamicWorldEventHud,
+  FishingHudState,
   FlightCutsceneState,
   HairId,
   HudSnapshot,
@@ -63,9 +73,12 @@ import {
   SeatSpot,
   SocialPost,
   StockAsset,
+  StuntBannerHud,
   TaxiRideState,
   VehicleState,
   VehicleTier,
+  VipContractDef,
+  WalletChoiceHud,
   WantedState,
   WeaponItem,
   WeatherType,
@@ -75,6 +88,7 @@ import {
   AIRPORT_FENCE_WALLS,
   AIRPORT_ZONES,
   BRIDGES,
+  BRIEFCASE_LOCATIONS,
   BuildingFootprint,
   BURGER_SHOT_STATIONS,
   CENTRAL_PARK,
@@ -83,6 +97,7 @@ import {
   computeGpsRoute,
   DELIVERY_TARGETS,
   FENCE_SPOTS,
+  FIGHT_CLUB_ARENA,
   GAS_STATIONS,
   generateViceCityWorld,
   getBridgeDeckInfo,
@@ -92,9 +107,11 @@ import {
   INITIAL_MISSIONS,
   INITIAL_SOCIAL_POSTS,
   INITIAL_STOCKS,
+  INITIAL_VIP_CONTRACTS,
   isWaterChannel,
   isWaterSurfaceAt,
   LAND_Y,
+  MIDNIGHT_RACE_CIRCUIT,
   NORTH_ISLAND,
   NORTH_ROAD_Z,
   ROAD_SEGMENTS,
@@ -107,6 +124,7 @@ import {
   SOUTH_ISLAND,
   SOUTH_ROAD_Z,
   STREET_STALLS,
+  STUNT_RAMPS,
   TAXI_STAND,
   TreasureSpot,
   WeakTreeSpot,
@@ -120,6 +138,10 @@ const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
 const _euler = new THREE.Euler();
 const _color = new THREE.Color();
+const _sunColTarget = new THREE.Color();
+const _fogColTarget = new THREE.Color();
+const _skyTopTarget = new THREE.Color();
+const _skyHorizonTarget = new THREE.Color();
 
 interface WorldVehicle {
   state: VehicleState;
@@ -146,6 +168,11 @@ interface WorldVehicle {
   rightDoorAngle: number;
   leftDoorTimer: number;
   rightDoorTimer: number;
+  roadRageTimer?: number;
+  roadRageDriverName?: string;
+  isArmoredVan?: boolean;
+  armoredBreached?: boolean;
+  isRacer?: boolean;
 }
 
 interface WildlifeEntry {
@@ -200,6 +227,12 @@ interface WorldNPC {
   packingCash?: boolean;
   panicked?: boolean;
   hasScreamed?: boolean;
+  recordingTimer?: number;
+  isMuggerThief?: boolean;
+  isMuggerVictim?: boolean;
+  isHitchhiker?: boolean;
+  isFightClubBoxer?: boolean;
+  stolenAmount?: number;
 }
 
 interface FirePool {
@@ -235,6 +268,7 @@ interface CashPickup {
   z: number;
   amount: number;
   life: number;
+  isArmoredCash?: boolean;
 }
 
 interface GrenadeProjectile {
@@ -675,6 +709,98 @@ export class ViceCityEngine {
   private contextAction: (() => void) | null = null;
   private contextActionLabel: string | null = null;
   private contextKind: HudSnapshot['contextKind'] = null;
+
+  // Dynamic Events, Open-World Hobbies, 25 Briefcases, Clout & Smooth Weather
+  private briefcaseEntries: Array<{
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    z: number;
+    collected: boolean;
+    mesh: THREE.Group;
+  }> = [];
+  private collectiblesFound = 0;
+  private goldSkinUnlocked = false;
+  private stuntTracking = {
+    airborne: false,
+    rampName: '',
+    startX: 0,
+    startZ: 0,
+    peakY: 0,
+    cooldown: 0,
+  };
+  private stuntBanner: StuntBannerHud | null = null;
+  private stuntBannerTimer = 0;
+  private dynamicEventSpawnTimer = 28;
+  private activeDynamicEvent: {
+    kind: DynamicWorldEventHud['kind'];
+    title: string;
+    subtitle: string;
+    color: 'blue' | 'red';
+    x: number;
+    z: number;
+    timer: number;
+    thiefNpc?: WorldNPC;
+    victimNpc?: WorldNPC;
+    vanVeh?: WorldVehicle;
+    vipNpc?: WorldNPC;
+    vipBoarded?: boolean;
+    vipDestX?: number;
+    vipDestZ?: number;
+    vipDestLabel?: string;
+    gangEnemies?: WorldNPC[];
+    payout: number;
+  } | null = null;
+  private walletChoicePending: WalletChoiceHud | null = null;
+  private fightClubRingMesh: THREE.Group | null = null;
+  private activeFightClub: {
+    active: boolean;
+    wave: number;
+    boxers: WorldNPC[];
+    prizePool: number;
+  } = { active: false, wave: 0, boxers: [], prizePool: 0 };
+  private fightBlocking = false;
+  private fightDodgeCooldown = 0;
+  private raceStartMesh: THREE.Group | null = null;
+  private raceCheckpointMesh: THREE.Group | null = null;
+  private activeRace: {
+    active: boolean;
+    cpIdx: number;
+    elapsedSec: number;
+    wager: number;
+    racerVehicles: Array<{ veh: WorldVehicle; cpIdx: number; finished: boolean }>;
+  } = { active: false, cpIdx: 0, elapsedSec: 0, wager: 800, racerVehicles: [] };
+  private fishingTimer = 0;
+  private fishingState: FishingHudState = {
+    active: false,
+    state: 'idle',
+    tension: 30,
+    biteProgress: 0,
+    caughtCount: 0,
+    bagValue: 0,
+    lastCatchName: null,
+  };
+  private fishingBobberMesh: THREE.Mesh | null = null;
+  private vipContracts: VipContractDef[] = INITIAL_VIP_CONTRACTS.map((c) => ({ ...c }));
+  private activeVipContractId: string | null = null;
+  private chaosCloutHeat = 0;
+  private cloutAccum = 0;
+
+  // Continuous Atmosphere Interpolation State
+  private curSunElev = 38;
+  private curSunIntensity = 1.15;
+  private curHemiIntensity = 0.48;
+  private curEnvIntensity = 0.32;
+  private curExposure = 0.72;
+  private curFogDensity = 0.00028;
+  private curTurbidity = 2.2;
+  private curRayleigh = 1.45;
+  private curMie = 0.0006;
+  private curSunColor = new THREE.Color(0xfff1dc);
+  private curFogColor = new THREE.Color(0x8bc8f2);
+  private curSkyTop = new THREE.Color(0x154794);
+  private curSkyHorizon = new THREE.Color(0x7cb8e8);
 
   constructor(container: HTMLElement, callbacks: EngineCallbacks) {
     this.container = container;
@@ -1327,6 +1453,7 @@ export class ViceCityEngine {
     this.spawnInitialVehicles();
     this.spawnInitialNpcs();
     this.spawnWildlife();
+    this.buildOpenWorldHobbies();
   }
 
   private buildAirportZones() {
@@ -2710,6 +2837,7 @@ export class ViceCityEngine {
   private onMouseUp = (e: MouseEvent) => {
     if (e.button === 2) {
       this.aiming = false;
+      this.fightBlocking = false;
     }
   };
 
@@ -2718,7 +2846,11 @@ export class ViceCityEngine {
     if (this.screen !== 'playing') return;
     if (this.activeModal !== null && this.activeModal !== 'phone') return;
     if (e.button === 2) {
-      this.aiming = true;
+      if (this.activeFightClub.active) {
+        this.fightBlocking = true;
+      } else {
+        this.aiming = true;
+      }
       return;
     }
     if (e.button === 0) {
@@ -2874,8 +3006,12 @@ export class ViceCityEngine {
       } else if (code === 'KeyR') {
         this.reloadWeapon();
       } else if (code === 'KeyC' && !p.inWater) {
-        p.crouching = !p.crouching;
-        p.prone = false;
+        if (this.activeFightClub.active) {
+          this.fightBlocking = true;
+        } else {
+          p.crouching = !p.crouching;
+          p.prone = false;
+        }
       } else if (code === 'KeyX' && !p.inWater) {
         p.prone = !p.prone;
         p.crouching = false;
@@ -2905,6 +3041,9 @@ export class ViceCityEngine {
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false;
+    if (e.code === 'KeyC') {
+      this.fightBlocking = false;
+    }
   };
 
   // ================= PUBLIC API =================
@@ -3234,7 +3373,7 @@ export class ViceCityEngine {
   public orderSeatedRefreshment() {
     if (!this.currentSeat) return;
     const isCoffee = this.currentSeat.venue === 'coffee';
-    const cost = isCoffee ? 12 : 18;
+    const cost = Math.round((isCoffee ? 12 : 18) * this.getDiscountMultiplier());
     if (this.cash < cost) {
       this.showToast(`Need $${cost}!`);
       return;
@@ -3248,7 +3387,7 @@ export class ViceCityEngine {
       this.adjustRelationship(6, isCoffee ? 'Coffee date together' : 'Drinks at Neon Anchor Bar');
     }
     viceAudio.playCashRegister();
-    this.showToast(isCoffee ? 'Cuban Espresso (-$12): Full Stamina & Focus!' : 'Vice Craft Beer (-$18): +25 HP & +6% Bond!');
+    this.showToast(isCoffee ? `Cuban Espresso (-$${cost}): Full Stamina & Focus!` : `Vice Craft Beer (-$${cost}): +25 HP & +6% Bond!`);
     this.pushHud();
   }
 
@@ -3502,7 +3641,7 @@ export class ViceCityEngine {
   }
 
   public buyAttachment(kind: 'suppressor' | 'scope' | 'extendedMag' | 'traumakit' | 'painkillers' | 'clean_kit') {
-    const costs: Record<string, number> = {
+    const baseCosts: Record<string, number> = {
       suppressor: 420,
       scope: 360,
       extendedMag: 320,
@@ -3510,7 +3649,7 @@ export class ViceCityEngine {
       painkillers: 140,
       clean_kit: 110,
     };
-    const cost = costs[kind];
+    const cost = Math.round(baseCosts[kind] * this.getDiscountMultiplier());
     if (this.cash < cost) {
       this.showToast(`Need $${cost} cash!`);
       return;
@@ -3900,18 +4039,19 @@ export class ViceCityEngine {
   }
 
   public eatAtBurgerShop() {
-    if (this.cash < 15) {
-      this.showToast('Need $15 for a Fresh Vice Burger!');
+    const cost = Math.round(15 * this.getDiscountMultiplier());
+    if (this.cash < cost) {
+      this.showToast(`Need $${cost} for a Fresh Vice Burger!`);
       return;
     }
-    this.cash -= 15;
+    this.cash -= cost;
     const p = this.protagonists[this.activeId];
     p.health = Math.min(p.maxHealth, p.health + 45);
     p.stamina = p.maxStamina;
     p.actionState = 'eat';
     this.actionTimer = 0.7;
     viceAudio.playCashRegister();
-    this.showToast('Ate Fresh Vice Burger (-$15): +45 HP & Full Stamina!');
+    this.showToast(`Ate Fresh Vice Burger (-$${cost}): +45 HP & Full Stamina!`);
     this.pushHud();
   }
 
@@ -4520,7 +4660,8 @@ export class ViceCityEngine {
       rpg: 4200,
       ammo: 180,
     };
-    const cost = costs[id] ?? 0;
+    const baseCost = costs[id] ?? 0;
+    const cost = Math.round(baseCost * this.getDiscountMultiplier());
     if (cost <= 0) return;
     if (this.cash < cost) {
       this.showToast(`Need $${cost.toLocaleString()} cash!`);
@@ -4583,11 +4724,12 @@ export class ViceCityEngine {
   }
 
   public buyClothesOutfit(outfit: OutfitId, hair: HairId, clearHeat: boolean, cost: number) {
-    if (cost > 0 && this.cash < cost) {
-      this.showToast(`Need $${cost} cash!`);
+    const finalCost = Math.round(cost * this.getDiscountMultiplier());
+    if (finalCost > 0 && this.cash < finalCost) {
+      this.showToast(`Need $${finalCost} cash!`);
       return;
     }
-    this.cash -= cost;
+    this.cash -= finalCost;
     this.changeAppearance(outfit, hair, clearHeat);
   }
 
@@ -4692,7 +4834,7 @@ export class ViceCityEngine {
       deagle: 850,
       upgrade: 550,
     };
-    const cost = costs[item];
+    const cost = Math.round(costs[item] * this.getDiscountMultiplier());
     if (this.cash < cost) {
       this.showToast(`Need $${cost} cash!`);
       return;
@@ -5010,6 +5152,7 @@ export class ViceCityEngine {
       );
     }
     if (!isSilenced) {
+      this.chaosCloutHeat = Math.max(this.chaosCloutHeat, 7.5);
       this.triggerCrimeEvent(p.x, p.z, 1, false);
       for (const npc of this.npcs) {
         if (!npc.alive || npc.kind !== 'civilian' || npc.drivingCar) continue;
@@ -5073,6 +5216,16 @@ export class ViceCityEngine {
         this.wanted.witnessProgress = 0;
       }
 
+      if (npc.isMuggerThief && this.activeDynamicEvent?.kind === 'atm_mugger' && this.activeDynamicEvent.thiefNpc === npc) {
+        const amt = npc.stolenAmount ?? this.activeDynamicEvent.payout;
+        this.walletChoicePending = {
+          amount: amt,
+          victimName: this.activeDynamicEvent.victimNpc?.name ?? 'ATM Customer',
+        };
+        this.activeDynamicEvent.subtitle = 'Thief downed! Choose: Keep Wallet or Return to Victim';
+        this.showToast(`Caught ATM Mugger! Keep Wallet ($${amt}) or Return to Victim?`);
+      }
+
       const lootAmt =
         npc.kind === 'police' || npc.kind === 'swat'
           ? 120 + Math.floor(Math.random() * 220)
@@ -5083,7 +5236,9 @@ export class ViceCityEngine {
         this.profile.violencePoints += 8;
         this.updateCriminalProfileLabel();
 
-        if (npc.kind === 'police' || npc.kind === 'swat') {
+        if (npc.isFightClubBoxer) {
+          // Sanctioned Fight Club match — no wanted stars!
+        } else if (npc.kind === 'police' || npc.kind === 'swat') {
           this.addWantedStars(1);
         } else if (!silent) {
           this.triggerCrimeEvent(npc.x, npc.z, 1, false);
@@ -5115,7 +5270,9 @@ export class ViceCityEngine {
             }
           }
         }
-        this.triggerCrimeEvent(npc.x, npc.z, 1, false);
+        if (!npc.isFightClubBoxer) {
+          this.triggerCrimeEvent(npc.x, npc.z, 1, false);
+        }
       }
     }
   }
@@ -5139,7 +5296,7 @@ export class ViceCityEngine {
     let closestWitness: WorldNPC | null = null;
     let bestD = 30;
     for (const npc of this.npcs) {
-      if (!npc.alive || npc.kind === 'child' || npc.drivingCar) continue;
+      if (!npc.alive || npc.kind === 'child' || npc.drivingCar || npc.isFightClubBoxer) continue;
       const d = Math.hypot(npc.x - x, npc.z - z);
       if ((npc.kind === 'police' || npc.kind === 'swat') && d < 36 && this.hasLineOfSight(npc.x, npc.z, x, z)) {
         this.addWantedStars(1);
@@ -5167,7 +5324,11 @@ export class ViceCityEngine {
 
   private damageProtagonist(targetId: ProtagonistId, dmg: number, attacker: WorldNPC | null) {
     const p = this.protagonists[targetId];
-    const effectiveDmg = p.painkillerTimer > 0 ? dmg * 0.6 : dmg;
+    let effectiveDmg = p.painkillerTimer > 0 ? dmg * 0.6 : dmg;
+    if (targetId === this.activeId && this.activeFightClub.active && this.fightBlocking && attacker?.isFightClubBoxer) {
+      effectiveDmg *= 0.2;
+      viceAudio.playImpact(false);
+    }
     if (p.armor > 0) {
       p.armor = Math.max(0, p.armor - effectiveDmg);
     } else {
@@ -5184,6 +5345,11 @@ export class ViceCityEngine {
     }
 
     if (p.health <= 0 && targetId === this.activeId) {
+      if (this.activeFightClub.active) {
+        this.endFightClub(false);
+        p.health = 35;
+        return;
+      }
       this.screen = 'wasted';
       this.pushHud();
     }
@@ -5674,7 +5840,7 @@ export class ViceCityEngine {
     } else {
       p.focusMeter = Math.min(p.maxFocusMeter, p.focusMeter + rawDt * 7);
     }
-    const simDt = this.slowMoActive ? rawDt * 0.35 : rawDt;
+    const simDt = this.slowMoActive || this.stuntTracking.airborne ? rawDt * 0.42 : rawDt;
 
     this.timeNormalized = (this.timeNormalized + rawDt * 0.0018) % 1;
     this.fireCooldown = Math.max(0, this.fireCooldown - rawDt);
@@ -6027,9 +6193,9 @@ export class ViceCityEngine {
       this.rainLines.geometry.attributes.position.needsUpdate = true;
     }
 
-    const targetRoadRough = isRaining ? 0.2 : 0.76;
+    const targetRoadRough = isRaining ? 0.18 : 0.76;
     if (this.roadMat) {
-      this.roadMat.roughness = THREE.MathUtils.damp(this.roadMat.roughness, targetRoadRough, 1.5, dt);
+      this.roadMat.roughness = THREE.MathUtils.damp(this.roadMat.roughness, targetRoadRough, 1.8, dt);
     }
 
     if (weather === 'storm' && Math.random() < dt * 0.14) {
@@ -6041,84 +6207,120 @@ export class ViceCityEngine {
     this.sunLight.position.set(p.x + 85, 85, p.z - 55);
     this.sunLight.target.position.set(p.x, 0, p.z);
 
-    let sunElevDeg = 32;
-    const skyTop = new THREE.Color(0x154794);
-    const skyHorizon = new THREE.Color(0x7cb8e8);
+    let targetSunElev = 38;
+    let targetSunInt = 1.15;
+    let targetHemiInt = 0.48;
+    let targetEnvInt = 0.32;
+    let targetExp = 0.72;
+    let targetFogDens = 0.00028;
+    let targetTurb = 2.2;
+    let targetRay = 1.45;
+    let targetMie = 0.0006;
     let stormFactor = 0;
 
     if (weather === 'sunny') {
-      sunElevDeg = 38;
-      this.sunLight.intensity = 1.15;
-      this.sunLight.color.setHex(0xfff1dc);
-      this.hemiLight.intensity = 0.48;
-      this.scene.environmentIntensity = 0.32;
-      this.renderer.toneMappingExposure = 0.72;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x8bc8f2);
-      (this.scene.fog as THREE.FogExp2).density = 0.00028;
+      targetSunElev = 38;
+      _skyTopTarget.setHex(0x154794);
+      _skyHorizonTarget.setHex(0x7cb8e8);
+      _sunColTarget.setHex(0xfff1dc);
+      _fogColTarget.setHex(0x8bc8f2);
     } else if (weather === 'sunset') {
-      sunElevDeg = 10;
-      skyTop.setHex(0x1e3a6e);
-      skyHorizon.setHex(0xe89b6c);
-      this.sunLight.intensity = 0.98;
-      this.sunLight.color.setHex(0xffb478);
-      this.hemiLight.intensity = 0.36;
-      this.scene.environmentIntensity = 0.25;
-      this.renderer.toneMappingExposure = 0.68;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0xc98468);
-      (this.scene.fog as THREE.FogExp2).density = 0.00055;
+      targetSunElev = 10;
+      targetSunInt = 0.98;
+      targetHemiInt = 0.36;
+      targetEnvInt = 0.25;
+      targetExp = 0.68;
+      targetFogDens = 0.00055;
+      targetTurb = 4.8;
+      targetRay = 2.1;
+      targetMie = 0.0018;
+      _skyTopTarget.setHex(0x1e3a6e);
+      _skyHorizonTarget.setHex(0xe89b6c);
+      _sunColTarget.setHex(0xffb478);
+      _fogColTarget.setHex(0xc98468);
     } else if (weather === 'cloudy') {
-      sunElevDeg = 24;
-      skyTop.setHex(0x38465a);
-      skyHorizon.setHex(0x7a8a9e);
+      targetSunElev = 24;
       stormFactor = 0.4;
-      this.sunLight.intensity = 0.68;
-      this.sunLight.color.setHex(0xcbd5e1);
-      this.hemiLight.intensity = 0.40;
-      this.scene.environmentIntensity = 0.22;
-      this.renderer.toneMappingExposure = 0.68;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x78889c);
-      (this.scene.fog as THREE.FogExp2).density = 0.00075;
+      targetSunInt = 0.68;
+      targetHemiInt = 0.40;
+      targetEnvInt = 0.22;
+      targetExp = 0.68;
+      targetFogDens = 0.00075;
+      targetTurb = 5.2;
+      targetRay = 1.0;
+      _skyTopTarget.setHex(0x38465a);
+      _skyHorizonTarget.setHex(0x7a8a9e);
+      _sunColTarget.setHex(0xcbd5e1);
+      _fogColTarget.setHex(0x78889c);
     } else {
-      sunElevDeg = 8;
-      skyTop.setHex(0x16202e);
-      skyHorizon.setHex(0x3b495c);
+      targetSunElev = 8;
       stormFactor = weather === 'storm' ? 1 : 0.72;
-      this.sunLight.intensity = 0.44 + this.lightningFlash * 1.35;
-      this.sunLight.color.setHex(0x7da6d8);
-      this.hemiLight.intensity = 0.30 + this.lightningFlash * 0.35;
-      this.scene.environmentIntensity = 0.18;
-      this.renderer.toneMappingExposure = 0.64;
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x283240);
-      (this.scene.fog as THREE.FogExp2).density = weather === 'storm' ? 0.0012 : 0.00095;
+      targetSunInt = 0.44;
+      targetHemiInt = 0.30;
+      targetEnvInt = 0.18;
+      targetExp = 0.64;
+      targetFogDens = weather === 'storm' ? 0.0012 : 0.00095;
+      targetTurb = 7.5;
+      targetRay = 0.7;
+      _skyTopTarget.setHex(0x16202e);
+      _skyHorizonTarget.setHex(0x3b495c);
+      _sunColTarget.setHex(0x7da6d8);
+      _fogColTarget.setHex(0x283240);
     }
 
     const hrs = Math.floor(this.timeNormalized * 24);
     const isNight = hrs >= 20 || hrs < 6;
     if (isNight) {
-      sunElevDeg = -2;
-      this.sunLight.intensity = 0.28 + this.lightningFlash * 1.1;
-      this.sunLight.color.setHex(0x88b0e6);
-      this.hemiLight.intensity = 0.22 + this.lightningFlash * 0.28;
-      this.scene.environmentIntensity = 0.16;
-      this.renderer.toneMappingExposure = 0.68;
-      skyTop.setHex(0x091324);
-      skyHorizon.setHex(0x1b2e4a);
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x142238);
+      targetSunElev = -2;
+      targetSunInt = 0.28;
+      targetHemiInt = 0.22;
+      targetEnvInt = 0.16;
+      targetExp = 0.68;
+      targetRay = 0.45;
+      _skyTopTarget.setHex(0x091324);
+      _skyHorizonTarget.setHex(0x1b2e4a);
+      _sunColTarget.setHex(0x88b0e6);
+      _fogColTarget.setHex(0x142238);
     }
 
-    const phi = THREE.MathUtils.degToRad(90 - sunElevDeg);
+    // Smooth continuous atmosphere interpolation (zero abrupt jumps!)
+    const blendRate = 0.65;
+    const cBlend = 1 - Math.exp(-blendRate * dt);
+    this.curSunElev = THREE.MathUtils.damp(this.curSunElev, targetSunElev, blendRate, dt);
+    this.curSunIntensity = THREE.MathUtils.damp(this.curSunIntensity, targetSunInt, blendRate, dt);
+    this.curHemiIntensity = THREE.MathUtils.damp(this.curHemiIntensity, targetHemiInt, blendRate, dt);
+    this.curEnvIntensity = THREE.MathUtils.damp(this.curEnvIntensity, targetEnvInt, blendRate, dt);
+    this.curExposure = THREE.MathUtils.damp(this.curExposure, targetExp, blendRate, dt);
+    this.curFogDensity = THREE.MathUtils.damp(this.curFogDensity, targetFogDens, blendRate, dt);
+    this.curTurbidity = THREE.MathUtils.damp(this.curTurbidity, targetTurb, blendRate, dt);
+    this.curRayleigh = THREE.MathUtils.damp(this.curRayleigh, targetRay, blendRate, dt);
+    this.curMie = THREE.MathUtils.damp(this.curMie, targetMie, blendRate, dt);
+    this.curSunColor.lerp(_sunColTarget, cBlend);
+    this.curFogColor.lerp(_fogColTarget, cBlend);
+    this.curSkyTop.lerp(_skyTopTarget, cBlend);
+    this.curSkyHorizon.lerp(_skyHorizonTarget, cBlend);
+
+    this.sunLight.intensity = this.curSunIntensity + this.lightningFlash * 1.3;
+    this.sunLight.color.copy(this.curSunColor);
+    this.hemiLight.intensity = this.curHemiIntensity + this.lightningFlash * 0.32;
+    this.scene.environmentIntensity = this.curEnvIntensity;
+    this.renderer.toneMappingExposure = this.curExposure;
+    (this.scene.fog as THREE.FogExp2).color.copy(this.curFogColor);
+    (this.scene.fog as THREE.FogExp2).density = this.curFogDensity;
+
+    const phi = THREE.MathUtils.degToRad(90 - this.curSunElev);
     const theta = THREE.MathUtils.degToRad(142);
     _v1.setFromSphericalCoords(1, phi, theta);
     if (this.envSky?.skyUniforms) {
       this.envSky.skyUniforms['sunPosition'].value.copy(_v1);
-      this.envSky.skyUniforms['turbidity'].value = isRaining ? 7.5 : weather === 'sunset' ? 4.8 : 2.2;
-      this.envSky.skyUniforms['rayleigh'].value = isNight ? 0.45 : weather === 'sunset' ? 2.1 : isRaining ? 0.7 : 1.45;
-      this.envSky.skyUniforms['mieCoefficient'].value = weather === 'sunset' ? 0.0018 : 0.0006;
+      this.envSky.skyUniforms['turbidity'].value = this.curTurbidity;
+      this.envSky.skyUniforms['rayleigh'].value = this.curRayleigh;
+      this.envSky.skyUniforms['mieCoefficient'].value = this.curMie;
       this.envSky.sky.position.set(p.x, 0, p.z);
     }
     if (this.oceanWater) {
-      this.currentStormFactor = stormFactor;
-      this.oceanWater.update(this.elapsedSec, _v1, skyTop, skyHorizon, stormFactor);
+      this.currentStormFactor = THREE.MathUtils.damp(this.currentStormFactor, stormFactor, blendRate, dt);
+      this.oceanWater.update(this.elapsedSec, _v1, this.curSkyTop, this.curSkyHorizon, this.currentStormFactor);
     }
     if (this.fountainWaterMat) {
       this.fountainWaterMat.uniforms.uSunDir.value.copy(_v1).normalize();
@@ -6413,6 +6615,9 @@ export class ViceCityEngine {
           steerAngle: activeVeh ? activeVeh.steerAngle : 0,
           ducking: Boolean(activeVeh?.state.ducking),
           vehicleTier: seqVeh?.state.tier,
+          blocking: isActive && this.activeFightClub.active && this.fightBlocking,
+          fishing: isActive && this.fishingState.active && this.fishingState.state !== 'idle',
+          fishingReeling: isActive && (this.fishingState.state === 'reeling' || this.fishingState.state === 'biting'),
         },
         dt
       );
@@ -6442,6 +6647,7 @@ export class ViceCityEngine {
           extendedMag: Boolean(aw?.attachments?.extendedMag),
           inVehicle: Boolean(activeVeh || isBoardingSelf || isExitingSelf),
           weaponVisual: wVis,
+          goldSkin: this.goldSkinUnlocked,
         }
       );
     });
@@ -6770,7 +6976,44 @@ export class ViceCityEngine {
         }
         if (!isHeli && !isPlane) {
           const groundY = getTerrainHeightAt(veh.x, veh.z);
-          veh.y = THREE.MathUtils.damp(veh.y, groundY > -1.0 ? groundY : LAND_Y, 16, dt);
+          if (this.stuntTracking.airborne) {
+            veh.vy -= 17.5 * dt;
+            veh.y += veh.vy * dt;
+            if (veh.y > this.stuntTracking.peakY) this.stuntTracking.peakY = veh.y;
+            if (veh.y <= groundY + 0.08 && veh.vy < 0) {
+              veh.y = groundY > -1.0 ? groundY : LAND_Y;
+              veh.vy = 0;
+              this.finishStuntJump(veh.x, veh.z);
+            }
+          } else {
+            let rampFloor = groundY > -1.0 ? groundY : LAND_Y;
+            for (const r of STUNT_RAMPS) {
+              const dx = veh.x - r.x;
+              const dz = veh.z - r.z;
+              const cos = Math.cos(-r.yaw);
+              const sin = Math.sin(-r.yaw);
+              const lx = dx * cos - dz * sin;
+              const lz = dx * sin + dz * cos;
+              if (Math.abs(lx) <= r.width / 2 + 0.8 && Math.abs(lz) <= r.length / 2 + 0.8) {
+                const prog = THREE.MathUtils.clamp((lz + r.length / 2) / r.length, 0, 1);
+                rampFloor = Math.max(rampFloor, LAND_Y + prog * r.height);
+                if (prog > 0.72 && Math.abs(s.speed) > 16 && this.stuntTracking.cooldown <= 0) {
+                  this.stuntTracking = {
+                    airborne: true,
+                    rampName: r.name,
+                    startX: veh.x,
+                    startZ: veh.z,
+                    peakY: veh.y,
+                    cooldown: 1.5,
+                  };
+                  veh.vy = Math.max(8.5, Math.abs(s.speed) * 0.42 + r.height * 1.15);
+                  this.chaosCloutHeat = Math.max(this.chaosCloutHeat, 7);
+                  viceAudio.playRocketLaunch();
+                }
+              }
+            }
+            veh.y = THREE.MathUtils.damp(veh.y, rampFloor, 18, dt);
+          }
         }
       }
 
@@ -6881,6 +7124,23 @@ export class ViceCityEngine {
               s.tireFlat = true;
               this.showToast('Tire Blowout! Speed capped — press [Y] near hood or visit Gas Station!');
             }
+            if (other.isTraffic && !other.isArmoredVan && res.impactSpeed > 6.5 && (!other.roadRageTimer || other.roadRageTimer <= 0)) {
+              other.roadRageTimer = 22;
+              other.roadRageDriverName = other.roadRageDriverName ?? 'Angry Driver';
+              viceAudio.playHorn();
+              const rageLines = [
+                'Watch the paint, idiot! You asked for this!',
+                'Kya kar raha hai?! Teri gaadi tod dunga!',
+                'Hey! Nobody rams my bumper and walks away!',
+              ];
+              const line = rageLines[Math.floor(Math.random() * rageLines.length)];
+              this.npcSubtitle = { speaker: other.roadRageDriverName, text: line, hostile: true };
+              this.npcSubtitleTimer = 3.4;
+              viceAudio.speakNpcLine(line, 0.9);
+            }
+            if (other.isArmoredVan && !other.armoredBreached && res.impactSpeed > 14.5) {
+              this.breachArmoredVan(other);
+            }
             viceAudio.playImpact(true);
             this.cameraShake = 0.24;
           }
@@ -6985,6 +7245,40 @@ export class ViceCityEngine {
         npc.x = v.x;
         npc.z = v.z;
         v.wheelSpin += speed * dt * 2.4;
+      } else if (v.isArmoredVan && v !== this.drivingVehicle) {
+        const vanSpeed = v.armoredBreached ? 0 : 12.5;
+        if (vanSpeed > 0) {
+          const nx = v.x + Math.sin(v.yaw) * vanSpeed * dt;
+          const nz = v.z + Math.cos(v.yaw) * vanSpeed * dt;
+          if (!this.collidesWithSolidWall(nx, nz, 1.8) && (!isWaterSurfaceAt(nx, nz) || getBridgeDeckInfo(nx, nz).onBridge)) {
+            v.x = nx;
+            v.z = nz;
+          } else {
+            v.yaw += Math.PI * 0.5;
+          }
+          v.wheelSpin += vanSpeed * dt * 2.4;
+        }
+      } else if (v.roadRageTimer && v.roadRageTimer > 0 && v !== this.drivingVehicle) {
+        v.roadRageTimer = Math.max(0, v.roadRageTimer - dt);
+        const p = this.protagonists[this.activeId];
+        const targetYaw = Math.atan2(p.x - v.x, p.z - v.z);
+        v.yaw = this.dampAngle(v.yaw, targetYaw, 4.8, dt);
+        const rSpeed = 23;
+        const nx = v.x + Math.sin(v.yaw) * rSpeed * dt;
+        const nz = v.z + Math.cos(v.yaw) * rSpeed * dt;
+        if (!this.collidesWithSolidWall(nx, nz, 1.5) && (!isWaterSurfaceAt(nx, nz) || getBridgeDeckInfo(nx, nz).onBridge)) {
+          v.x = nx;
+          v.z = nz;
+        } else {
+          v.yaw += 1.4 * dt;
+        }
+        v.wheelSpin += rSpeed * dt * 2.4;
+        if (this.drivingVehicle && Math.hypot(v.x - this.drivingVehicle.x, v.z - this.drivingVehicle.z) < 3.6) {
+          this.drivingVehicle.state.health = Math.max(10, this.drivingVehicle.state.health - 4 * dt);
+          if (Math.random() < dt * 0.7) viceAudio.playHorn();
+        }
+      } else if (v.isRacer && v !== this.drivingVehicle) {
+        // Controlled by updateMidnightRace
       } else if (v.isTraffic && v !== this.drivingVehicle) {
         // Respect red traffic signals ahead
         let redLightHold = false;
@@ -7080,6 +7374,12 @@ export class ViceCityEngine {
 
       v.rig.root.position.set(v.x, v.y, v.z);
       v.rig.root.rotation.y = v.yaw;
+
+      if (this.goldSkinUnlocked && v === this.drivingVehicle) {
+        v.rig.bodyMat.color.setHex(0xfacc15);
+        v.rig.bodyMat.metalness = 0.88;
+        v.rig.bodyMat.roughness = 0.16;
+      }
 
       animateVehicleRig(
         v.rig,
@@ -7289,17 +7589,21 @@ export class ViceCityEngine {
         npc.rig.root.rotation.y = npc.yaw;
 
         // Aim firearm at store/bank cashier to intimidate & start robbery!
+        // Ruthless Enforcer triggers faster/longer-range panic!
         const distCashier = Math.hypot(p.x - npc.x, p.z - npc.z);
+        const ruthless = this.profile.label === 'Ruthless Enforcer';
+        const hasFirearm =
+          p.equippedWeaponId !== 'fists' &&
+          p.equippedWeaponId !== 'bat' &&
+          p.equippedWeaponId !== 'grenades' &&
+          p.equippedWeaponId !== 'molotov';
         if (
           this.currentInterior &&
           this.currentInterior.hasRegister &&
           this.currentInterior.robbedCooldown <= 0 &&
-          this.aiming &&
-          p.equippedWeaponId !== 'fists' &&
-          p.equippedWeaponId !== 'bat' &&
-          p.equippedWeaponId !== 'grenades' &&
-          p.equippedWeaponId !== 'molotov' &&
-          distCashier < 12.5 &&
+          (this.aiming || ruthless) &&
+          hasFirearm &&
+          distCashier < (ruthless ? 17.5 : 12.5) &&
           this.activeRobbery.stage === 'none'
         ) {
           const baseLoot =
@@ -7322,7 +7626,7 @@ export class ViceCityEngine {
           }
           for (const civ of this.npcs) {
             if (!civ.alive || civ === npc || civ.kind === 'police' || civ.kind === 'swat' || civ.kind === 'child' || civ.drivingCar) continue;
-            if (Math.hypot(civ.x - p.x, civ.z - p.z) < 22) {
+            if (Math.hypot(civ.x - p.x, civ.z - p.z) < (ruthless ? 30 : 22)) {
               civ.fleeing = true;
               if (!civ.hasScreamed) {
                 civ.hasScreamed = true;
@@ -7403,6 +7707,31 @@ export class ViceCityEngine {
         viceAudio.speakNpcLine(this.npcSubtitle.text, 0.92);
       }
 
+      // ATM Mugger Thief sprinting away with stolen cash!
+      if (npc.isMuggerThief && !npc.fleeing) {
+        npc.fleeing = true;
+      }
+
+      // Stranded VIP Hitchhiker waving on sidewalk
+      if (npc.isHitchhiker) {
+        npc.yaw = Math.atan2(p.x - npc.x, p.z - npc.z);
+        npc.rig.root.position.set(npc.x, npc.y, npc.z);
+        npc.rig.root.rotation.y = npc.yaw;
+        animateNpcRig(npc.rig, 0, { waving: true, timeSec: this.elapsedSec });
+        continue;
+      }
+
+      // Crowd Live-Streaming Clout when player creates chaos/stunts/high wanted nearby!
+      if (npc.recordingTimer && npc.recordingTimer > 0) {
+        npc.recordingTimer = Math.max(0, npc.recordingTimer - dt);
+        npc.yaw = Math.atan2(p.x - npc.x, p.z - npc.z);
+        npc.rig.root.position.set(npc.x, npc.y, npc.z);
+        npc.rig.root.rotation.y = npc.yaw;
+        animateNpcRig(npc.rig, 0, { recording: true, timeSec: this.elapsedSec });
+        this.cloutAccum += dt * 4.5;
+        continue;
+      }
+
       if (npc.hostile && (this.wanted.stars > 0 || npc.kind === 'civilian' || npc.kind === 'brawler' || npc.kind === 'gang')) {
         const stopDist = npc.armed ? 7.5 : 1.35;
         if (distToTarget > stopDist && distToTarget < 85) {
@@ -7422,9 +7751,9 @@ export class ViceCityEngine {
         npc.fireCooldown = Math.max(0, npc.fireCooldown - dt);
 
         if (distToTarget < 1.8 && npc.meleeCooldown <= 0 && !this.drivingVehicle) {
-          npc.meleeCooldown = 1.05;
+          npc.meleeCooldown = npc.isFightClubBoxer ? 0.9 : 1.05;
           viceAudio.playImpact(false);
-          this.damageProtagonist(npc.targetProtagonist, 9, npc);
+          this.damageProtagonist(npc.targetProtagonist, npc.isFightClubBoxer ? 11 : 9, npc);
         } else if (npc.armed && distToTarget < 28 && npc.fireCooldown <= 0 && !this.currentInterior) {
           npc.fireCooldown = npc.kind === 'swat' ? 0.65 : npc.kind === 'gang' ? 0.95 : 1.15;
           const dx = target.x - npc.x;
@@ -7434,10 +7763,12 @@ export class ViceCityEngine {
           viceAudio.playGunshot(false);
         }
       } else if (npc.fleeing && distToTarget < 50) {
-        // Panicked NPC can hijack an empty parked car to escape!
-        const nearbyEmptyCar = this.vehicles.find(
-          (v) => !v.driverPresent && !v.hijackedByNpc && v !== this.drivingVehicle && v.state.tier !== 'boat' && v.state.tier !== 'plane' && v.state.tier !== 'heli' && Math.hypot(v.x - npc.x, v.z - npc.z) < 6.5
-        );
+        // Panicked NPC can hijack an empty parked car to escape (except thief fleeing on foot)
+        const nearbyEmptyCar = npc.isMuggerThief
+          ? undefined
+          : this.vehicles.find(
+              (v) => !v.driverPresent && !v.hijackedByNpc && v !== this.drivingVehicle && v.state.tier !== 'boat' && v.state.tier !== 'plane' && v.state.tier !== 'heli' && Math.hypot(v.x - npc.x, v.z - npc.z) < 6.5
+            );
         if (nearbyEmptyCar) {
           nearbyEmptyCar.leftDoorTimer = 0.55;
           nearbyEmptyCar.hijackedByNpc = npc;
@@ -7448,8 +7779,9 @@ export class ViceCityEngine {
         }
         const nx = (npc.x - p.x) / Math.max(0.1, distToTarget);
         const nz = (npc.z - p.z) / Math.max(0.1, distToTarget);
-        const fx = npc.x + nx * 5.6 * dt;
-        const fz = npc.z + nz * 5.6 * dt;
+        const fleeSpeed = npc.isMuggerThief ? 5.9 : 5.6;
+        const fx = npc.x + nx * fleeSpeed * dt;
+        const fz = npc.z + nz * fleeSpeed * dt;
         if (!isWaterChannel(fx, fz) || getBridgeDeckInfo(fx, fz).onBridge) {
           npc.x = fx;
           npc.z = fz;
@@ -7457,6 +7789,11 @@ export class ViceCityEngine {
         npc.yaw = Math.atan2(nx, nz);
         npc.walkPhase += dt * 11;
       } else {
+        const weather = WEATHER_ORDER[this.weatherIndex];
+        const isRainNow = weather === 'rain' || weather === 'storm';
+        const hasUmbrellaHash = npc.id.charCodeAt(npc.id.length - 1) % 3 !== 0;
+        const rainSprint = isRainNow && npc.kind === 'civilian' && !hasUmbrellaHash;
+
         npc.wanderTimer -= dt;
         if (npc.wanderTimer <= 0) {
           npc.wanderTimer = 3 + Math.random() * 4;
@@ -7466,12 +7803,13 @@ export class ViceCityEngine {
             npc.patrolCenterZ - npc.z + (Math.random() - 0.5) * roam
           );
         }
-        const nx = npc.x + Math.sin(npc.yaw) * npc.speed * 0.55 * dt;
-        const nz = npc.z + Math.cos(npc.yaw) * npc.speed * 0.55 * dt;
+        const moveSpd = npc.speed * (rainSprint ? 1.45 : 0.55);
+        const nx = npc.x + Math.sin(npc.yaw) * moveSpd * dt;
+        const nz = npc.z + Math.cos(npc.yaw) * moveSpd * dt;
         if (!this.collidesWithSolidWall(nx, nz, 0.4) && (!isWaterChannel(nx, nz) || getBridgeDeckInfo(nx, nz).onBridge)) {
           npc.x = nx;
           npc.z = nz;
-          npc.walkPhase += dt * 5;
+          npc.walkPhase += dt * (rainSprint ? 9 : 5);
         } else {
           npc.yaw += Math.PI * 0.7;
         }
@@ -7480,13 +7818,15 @@ export class ViceCityEngine {
       npc.rig.root.position.set(npc.x, npc.y, npc.z);
       npc.rig.root.rotation.y = npc.yaw;
       const weather = WEATHER_ORDER[this.weatherIndex];
-      const npcRaining = (weather === 'rain' || weather === 'storm') && npc.kind === 'civilian' && !npc.fleeing && !npc.hostile;
+      const hasUmbrella = npc.id.charCodeAt(npc.id.length - 1) % 3 !== 0;
+      const npcRaining = (weather === 'rain' || weather === 'storm') && npc.kind === 'civilian' && !npc.fleeing && !npc.hostile && hasUmbrella;
       animateNpcRig(npc.rig, npc.walkPhase, {
-        handsUp: npc.fleeing && !npc.isWitness && !npc.packingCash,
+        handsUp: npc.fleeing && !npc.isWitness && !npc.packingCash && !npc.isMuggerThief,
         calling911: npc.isWitness,
         umbrella: npcRaining,
         checkingPhone: npc.kind === 'civilian' && !npc.fleeing && !npc.isWitness && npc.walkPhase < 0.01,
         aiming: npc.hostile && npc.armed,
+        boxing: Boolean(npc.isFightClubBoxer && npc.hostile),
         packing: Boolean(npc.packingCash),
         timeSec: this.elapsedSec,
       });
@@ -7494,6 +7834,7 @@ export class ViceCityEngine {
 
     this.updateNpcIntelAndStare(dt);
     this.updateWildlife(dt);
+    this.updateOpenWorldLoops(dt);
   }
 
   private updateNpcIntelAndStare(dt: number) {
@@ -7792,6 +8133,9 @@ export class ViceCityEngine {
       if (veh === this.drivingVehicle) continue;
       const d = Math.hypot(veh.x - x, veh.z - z);
       if (d < radius) {
+        if (veh.isArmoredVan && !veh.armoredBreached) {
+          this.breachArmoredVan(veh);
+        }
         veh.state.health = Math.max(0, veh.state.health - 55);
         const nx = (veh.x - x) / Math.max(0.1, d);
         const nz = (veh.z - z) / Math.max(0.1, d);
@@ -7799,6 +8143,7 @@ export class ViceCityEngine {
         veh.vz += nz * 12;
       }
     }
+    this.chaosCloutHeat = Math.max(this.chaosCloutHeat, 8);
     this.triggerCrimeEvent(x, z, radius > 11 ? 3 : 2, false);
   }
 
@@ -7811,10 +8156,16 @@ export class ViceCityEngine {
       const groundY = Math.max(LAND_Y, getTerrainHeightAt(cp.x, cp.z));
       cp.mesh.position.y = groundY + 0.28 + Math.sin(this.elapsedSec * 4) * 0.08;
 
-      if (Math.hypot(cp.x - p.x, cp.z - p.z) < 1.9) {
+      if (Math.hypot(cp.x - p.x, cp.z - p.z) < 2.2) {
         this.cash += cp.amount;
         viceAudio.playCashRegister();
-        this.showToast(`Looted +$${cp.amount} cash!`);
+        if (cp.isArmoredCash) {
+          if (this.wanted.stars < 3) this.addWantedStars(3 - this.wanted.stars);
+          this.addClout(90);
+          this.showToast(`Grabbed Armored Cash Bag (+$${cp.amount.toLocaleString()})! 3-Star Wanted!`);
+        } else {
+          this.showToast(`Looted +$${cp.amount} cash!`);
+        }
         this.scene.remove(cp.mesh);
         this.cashPickups.splice(i, 1);
       } else if (cp.life <= 0) {
@@ -7842,6 +8193,18 @@ export class ViceCityEngine {
             this.damageNpc(npc, t.damage, false, this.activeId);
             remove = true;
             break;
+          }
+        }
+        if (!remove) {
+          for (const veh of this.vehicles) {
+            if (veh.isArmoredVan && !veh.armoredBreached && Math.hypot(t.x - veh.x, t.z - veh.z) < 3.0) {
+              veh.state.health -= t.damage * 0.6;
+              if (veh.state.health <= 75) {
+                this.breachArmoredVan(veh);
+              }
+              remove = true;
+              break;
+            }
           }
         }
       } else if (!remove && !t.fromPlayer && !this.drivingVehicle) {
@@ -8263,16 +8626,17 @@ export class ViceCityEngine {
 
     for (const gs of GAS_STATIONS) {
       if (Math.hypot(p.x - gs.x, p.z - gs.z) < 7.0 && this.drivingVehicle) {
+        const fuelCost = Math.round(80 * this.getDiscountMultiplier());
         this.contextKind = 'fuel';
-        this.contextPrompt = `${kE}Refuel / EV Charge & Repair at ${gs.name} ($80)`;
+        this.contextPrompt = `${kE}Refuel / EV Charge & Repair at ${gs.name} ($${fuelCost})`;
         this.contextActionLabel = 'Refuel & Repair';
         this.contextAction = () => {
           if (!this.drivingVehicle) return;
-          if (this.cash < 80) {
-            this.showToast('Need $80 for fuel & repair!');
+          if (this.cash < fuelCost) {
+            this.showToast(`Need $${fuelCost} for fuel & repair!`);
             return;
           }
-          this.cash -= 80;
+          this.cash -= fuelCost;
           this.drivingVehicle.state.fuel = 100;
           this.drivingVehicle.state.health = 100;
           viceAudio.playCashRegister();
@@ -8280,6 +8644,62 @@ export class ViceCityEngine {
         };
         return;
       }
+    }
+
+    // Pier Fishing on Wooden Docks & Selling Catch at Harbor Market / Burger Shot
+    if (!this.drivingVehicle && this.fishingState.active) {
+      this.contextKind = 'fishing_pier';
+      if (this.fishingState.state === 'idle') {
+        this.contextPrompt = `${kE}Cast Fishing Line off Pier (Bag: ${this.fishingState.caughtCount} fish)`;
+        this.contextActionLabel = 'Cast Line';
+      } else if (this.fishingState.state === 'biting' || this.fishingState.state === 'reeling') {
+        this.contextPrompt = `${kE}REEL FISH IN NOW!`;
+        this.contextActionLabel = 'Reel Fish';
+      } else {
+        this.contextPrompt = `${kE}Cancel / Pull Line In`;
+        this.contextActionLabel = 'Pull Line';
+      }
+      this.contextAction = () => this.triggerFishingAction();
+      return;
+    }
+
+    if (
+      !this.drivingVehicle &&
+      this.fishingState.caughtCount > 0 &&
+      (this.currentInterior?.kind === 'burgershot' ||
+        Math.hypot(p.x - 350, p.z - -525) < 14 ||
+        Math.hypot(p.x - 350, p.z - 1050) < 14)
+    ) {
+      this.contextKind = 'sell_fish';
+      this.contextPrompt = `${kE}Sell ${this.fishingState.caughtCount} Caught Fish (+$${this.fishingState.bagValue})`;
+      this.contextActionLabel = `Sell Fish (+$${this.fishingState.bagValue})`;
+      this.contextAction = () => this.sellCaughtFish();
+      return;
+    }
+
+    // Underground Fight Club Ring Prompt
+    if (!this.drivingVehicle && !this.activeFightClub.active && Math.hypot(p.x - FIGHT_CLUB_ARENA.x, p.z - FIGHT_CLUB_ARENA.z) < 12) {
+      this.contextKind = 'fight_club';
+      this.contextPrompt = `${kE}Enter Underground Fight Club (3 Waves · Up to $1,400)`;
+      this.contextActionLabel = 'Start Fight Club';
+      this.contextAction = () => this.startFightClub();
+      return;
+    }
+
+    // Midnight Underground Street Race Prompt
+    if (
+      !this.activeRace.active &&
+      Math.hypot(p.x - MIDNIGHT_RACE_CIRCUIT.startX, p.z - MIDNIGHT_RACE_CIRCUIT.startZ) < 16
+    ) {
+      const hrs = Math.floor(this.timeNormalized * 24);
+      const isNightNow = hrs >= 20 || hrs < 6;
+      this.contextKind = 'street_race';
+      this.contextPrompt = isNightNow
+        ? `${kE}Join Midnight Street Race ($800 Wager · $3,800 1st Prize)`
+        : `${kE}Wait until Midnight (21:00) & Start Street Race ($800 Wager)`;
+      this.contextActionLabel = isNightNow ? 'Start Race ($800)' : 'Midnight Race ($800)';
+      this.contextAction = () => this.startMidnightRace();
+      return;
     }
 
     if (this.drivingVehicle && this.drivingVehicle.state.gpsTrackerActive) {
@@ -8533,6 +8953,21 @@ export class ViceCityEngine {
     }
     for (const gs of GAS_STATIONS) minimapEntities.push({ x: gs.x, z: gs.z, kind: 'gas', label: gs.name });
     for (const fn of FENCE_SPOTS) minimapEntities.push({ x: fn.x, z: fn.z, kind: 'fence', label: fn.name });
+    minimapEntities.push({ x: FIGHT_CLUB_ARENA.x, z: FIGHT_CLUB_ARENA.z, kind: 'fightclub', label: FIGHT_CLUB_ARENA.name });
+    minimapEntities.push({ x: MIDNIGHT_RACE_CIRCUIT.startX, z: MIDNIGHT_RACE_CIRCUIT.startZ, kind: 'race', label: MIDNIGHT_RACE_CIRCUIT.name });
+    for (const r of STUNT_RAMPS) {
+      if (Math.hypot(r.x - p.x, r.z - p.z) < 520) {
+        minimapEntities.push({ x: r.x, z: r.z, kind: 'stunt', label: r.name });
+      }
+    }
+    if (this.activeDynamicEvent) {
+      minimapEntities.push({
+        x: this.activeDynamicEvent.x,
+        z: this.activeDynamicEvent.z,
+        kind: this.activeDynamicEvent.color === 'blue' ? 'event_blue' : 'event_red',
+        label: this.activeDynamicEvent.title,
+      });
+    }
     if (this.waypoint) minimapEntities.push({ x: this.waypoint.x, z: this.waypoint.z, kind: 'mission', label: this.waypoint.label });
 
     const hrs = Math.floor(this.timeNormalized * 24);
@@ -8579,7 +9014,7 @@ export class ViceCityEngine {
       isNight,
       weather,
       weatherLabel: WEATHER_LABELS[weather],
-      slowMoActive: this.slowMoActive,
+      slowMoActive: this.slowMoActive || this.stuntTracking.airborne,
       aiming: this.aiming,
       contextPrompt: this.contextPrompt,
       contextAction: this.contextActionLabel,
@@ -8615,7 +9050,1149 @@ export class ViceCityEngine {
       totalInteriorsCount: this.worldInteriors.length,
       underwaterTreasureFound: this.underwaterTreasureFound,
       messages: [...this.messages],
+      activeDynamicEvent: this.activeDynamicEvent
+        ? {
+            id: `evt_${this.activeDynamicEvent.kind}`,
+            kind: this.activeDynamicEvent.kind,
+            title: this.activeDynamicEvent.title,
+            subtitle: this.activeDynamicEvent.subtitle,
+            x: this.activeDynamicEvent.x,
+            z: this.activeDynamicEvent.z,
+            blipColor: this.activeDynamicEvent.color,
+            timerSec: Math.ceil(this.activeDynamicEvent.timer),
+          }
+        : null,
+      walletChoicePending: this.walletChoicePending ? { ...this.walletChoicePending } : null,
+      stuntBanner: this.stuntBanner ? { ...this.stuntBanner } : null,
+      activeRace: this.activeRace.active ? this.computeActiveRaceHud() : null,
+      activeFightClub: this.activeFightClub.active
+        ? {
+            wave: this.activeFightClub.wave,
+            opponentsAlive: this.activeFightClub.boxers.filter((b) => b.alive).length,
+            prizePool: this.activeFightClub.prizePool,
+            blocking: this.fightBlocking,
+            dodging: this.fightDodgeCooldown > 0.35,
+          }
+        : null,
+      fishingHud: { ...this.fishingState },
+      collectiblesFound: this.collectiblesFound,
+      goldSkinUnlocked: this.goldSkinUnlocked,
+      cloutTierLabel: this.getCloutTierLabel(),
+      profileDiscountPct: this.profile.label === 'Clean Operator' ? 20 : 0,
+      vipContracts: this.vipContracts.map((v) => ({
+        ...v,
+        active: this.activeVipContractId === v.id,
+      })),
     });
+  }
+
+  // ================= NEW DYNAMIC EVENTS, HOBBIES & CLOUT SYSTEMS =================
+
+  private getDiscountMultiplier(): number {
+    return this.profile.label === 'Clean Operator' ? 0.8 : 1.0;
+  }
+
+  private getCloutTierLabel(): string {
+    if (this.clout >= 3500) return 'Global Superstar';
+    if (this.clout >= 1800) return 'Vice Icon';
+    if (this.clout >= 800) return 'Leonida Viral';
+    if (this.clout >= 250) return 'Local Trend';
+    return 'Street Nobody';
+  }
+
+  private addClout(points: number) {
+    const prevClout = this.clout;
+    const prevTier = this.getCloutTierLabel();
+    this.clout += points;
+    for (const c of this.vipContracts) {
+      if (!c.completed && prevClout < c.minClout && this.clout >= c.minClout) {
+        this.showToast(`VIRAL UNLOCK: VIP Contract "${c.title}" now available on Phone Live!`);
+      }
+    }
+    const nextTier = this.getCloutTierLabel();
+    if (nextTier !== prevTier) {
+      this.showToast(`CLOUT TIER UP: ${nextTier}!`);
+    }
+  }
+
+  private buildOpenWorldHobbies() {
+    // 1. 15 Insane Stunt Ramps
+    for (const r of STUNT_RAMPS) {
+      const rampMesh = createStuntRampMesh(r.width, r.length, r.height);
+      rampMesh.position.set(r.x, LAND_Y, r.z);
+      rampMesh.rotation.y = r.yaw;
+      this.scene.add(rampMesh);
+    }
+
+    // 2. 25 Hidden Golden Briefcases
+    for (const bc of BRIEFCASE_LOCATIONS) {
+      const mesh = createGoldenBriefcaseMesh();
+      mesh.position.set(bc.x, bc.y, bc.z);
+      this.scene.add(mesh);
+      this.briefcaseEntries.push({ ...bc, collected: false, mesh });
+    }
+
+    // 3. Underground Fight Club Boxing Ring
+    this.fightClubRingMesh = createFightClubRingMesh();
+    this.fightClubRingMesh.position.set(FIGHT_CLUB_ARENA.x, LAND_Y, FIGHT_CLUB_ARENA.z);
+    this.scene.add(this.fightClubRingMesh);
+
+    // 4. Midnight Street Race Start Gate + Dynamic Checkpoint Ring
+    this.raceStartMesh = createCheckeredStartPostMesh();
+    this.raceStartMesh.position.set(MIDNIGHT_RACE_CIRCUIT.startX, LAND_Y, MIDNIGHT_RACE_CIRCUIT.startZ);
+    this.scene.add(this.raceStartMesh);
+
+    this.raceCheckpointMesh = createRaceCheckpointMesh(false);
+    this.raceCheckpointMesh.visible = false;
+    this.scene.add(this.raceCheckpointMesh);
+
+    // 5. Fishing Bobber Mesh (reused while fishing on docks)
+    this.fishingBobberMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+    );
+    this.fishingBobberMesh.visible = false;
+    this.scene.add(this.fishingBobberMesh);
+  }
+
+  private finishStuntJump(landX: number, landZ: number) {
+    const tr = this.stuntTracking;
+    tr.airborne = false;
+    const dist = Math.round(Math.hypot(landX - tr.startX, landZ - tr.startZ));
+    const peak = Math.max(1, Math.round(tr.peakY - LAND_Y));
+    if (dist >= 12) {
+      const reward = Math.round(dist * 12 + peak * 30);
+      this.cash += reward;
+      this.addClout(75);
+      this.stuntBanner = {
+        name: tr.rampName,
+        distanceM: dist,
+        heightM: peak,
+        bonusCash: reward,
+        active: false,
+      };
+      this.stuntBannerTimer = 4.2;
+      viceAudio.playCashRegister();
+      this.showToast(`INSANE STUNT JUMP! ${dist}m · +$${reward.toLocaleString()} · +75 Clout`);
+    }
+  }
+
+  private updateOpenWorldLoops(dt: number) {
+    const p = this.protagonists[this.activeId];
+
+    // Decay stunt cooldown & banner
+    if (this.stuntTracking.cooldown > 0) this.stuntTracking.cooldown = Math.max(0, this.stuntTracking.cooldown - dt);
+    if (this.stuntBannerTimer > 0) {
+      this.stuntBannerTimer -= dt;
+      if (this.stuntBannerTimer <= 0) this.stuntBanner = null;
+    }
+
+    // Collect 25 Hidden Golden Briefcases
+    for (const bc of this.briefcaseEntries) {
+      if (bc.collected) continue;
+      bc.mesh.rotation.y += dt * 1.8;
+      if (Math.hypot(p.x - bc.x, p.z - bc.z) < 2.6 && Math.abs(p.y - bc.y) < 3.2) {
+        bc.collected = true;
+        bc.mesh.visible = false;
+        this.collectiblesFound++;
+        this.cash += 500;
+        this.addClout(40);
+        viceAudio.playCashRegister();
+        if (this.collectiblesFound >= BRIEFCASE_LOCATIONS.length) {
+          this.goldSkinUnlocked = true;
+          this.showToast(`25/25 GOLDEN BRIEFCASES! 24K Gold Metallic Finish UNLOCKED on Vehicles & Guns!`);
+        } else {
+          this.showToast(`Golden Briefcase (${this.collectiblesFound}/${BRIEFCASE_LOCATIONS.length}): +$500 & +40 Clout!`);
+        }
+      }
+    }
+
+    // Crowd Clout Heat & Live-Streaming Pedestrians
+    if (this.wanted.stars >= 2) this.chaosCloutHeat = Math.max(this.chaosCloutHeat, 2.5);
+    if (this.chaosCloutHeat > 0) {
+      this.chaosCloutHeat = Math.max(0, this.chaosCloutHeat - dt);
+      for (const npc of this.npcs) {
+        if (!npc.alive || npc.drivingCar || npc.kind !== 'civilian' || npc.isWitness || npc.isHitchhiker || npc.isMuggerVictim) continue;
+        if ((!npc.recordingTimer || npc.recordingTimer <= 0) && Math.hypot(npc.x - p.x, npc.z - p.z) < 24 && Math.random() < dt * 2.2) {
+          npc.recordingTimer = 7.5;
+          npc.fleeing = false;
+        }
+      }
+    }
+    if (this.cloutAccum >= 1) {
+      const whole = Math.floor(this.cloutAccum);
+      this.cloutAccum -= whole;
+      this.addClout(whole);
+    }
+
+    // Dynamic Random World Events (spawn every 60-90s, initial ~28s)
+    this.updateDynamicEvents(dt);
+
+    // Fight Club Waves
+    this.updateFightClub(dt);
+
+    // Midnight Street Race
+    this.updateMidnightRace(dt);
+
+    // Beach & Pier Fishing
+    this.updatePierFishing(dt);
+
+    // VIP Contracts completion check
+    this.updateActiveVipContract();
+  }
+
+  private breachArmoredVan(van: WorldVehicle) {
+    if (van.armoredBreached) return;
+    van.armoredBreached = true;
+    van.state.speed = 0;
+    viceAudio.playExplosion();
+    this.cameraShake = 0.42;
+
+    const backX = van.x - Math.sin(van.yaw) * 4.5;
+    const backZ = van.z - Math.cos(van.yaw) * 4.5;
+    for (let i = 0; i < 4; i++) {
+      const cx = backX + (Math.random() - 0.5) * 3.5;
+      const cz = backZ + (Math.random() - 0.5) * 3.5;
+      const mesh = createCashPickupMesh();
+      mesh.position.set(cx, Math.max(LAND_Y, getTerrainHeightAt(cx, cz)) + 0.25, cz);
+      this.scene.add(mesh);
+      this.cashPickups.push({
+        id: `armored_cash_${Date.now()}_${i}`,
+        mesh,
+        x: cx,
+        z: cz,
+        amount: 850,
+        life: 90,
+        isArmoredCash: true,
+      });
+    }
+    // Spawn 2 Armored Guards defending the cash
+    for (let g = 0; g < 2; g++) {
+      const gx = van.x + (g === 0 ? -2.8 : 2.8);
+      const gz = van.z - 2.2;
+      const rig = createCharacterRig('swat', this.textures.contactShadow);
+      rig.root.position.set(gx, LAND_Y, gz);
+      this.scene.add(rig.root);
+      this.npcs.push({
+        id: `van_guard_${Date.now()}_${g}`,
+        name: 'Armored Guard',
+        archetype: 'Security Detail',
+        rig,
+        x: gx,
+        y: LAND_Y,
+        z: gz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tumbleAngle: 0,
+        yaw: 0,
+        speed: 4.8,
+        walkPhase: 0,
+        kind: 'gang',
+        hp: 110,
+        alive: true,
+        hostile: true,
+        armed: true,
+        fleeing: false,
+        isWitness: false,
+        witnessTimer: 0,
+        mood: -100,
+        patrolCenterX: gx,
+        patrolCenterZ: gz,
+        wanderTimer: 0,
+        fireCooldown: 0.8,
+        meleeCooldown: 0,
+        targetProtagonist: this.activeId,
+        targetNpc: null,
+      });
+    }
+    this.showToast('ARMORED VAN BREACHED! Grab the $3,400 Cash Bags!');
+  }
+
+  private updateDynamicEvents(dt: number) {
+    const p = this.protagonists[this.activeId];
+
+    if (!this.activeDynamicEvent) {
+      this.dynamicEventSpawnTimer -= dt;
+      if (this.dynamicEventSpawnTimer <= 0 && !this.currentInterior) {
+        this.dynamicEventSpawnTimer = 60 + Math.random() * 30;
+        this.spawnDynamicWorldEvent();
+      }
+      return;
+    }
+
+    const ev = this.activeDynamicEvent;
+    ev.timer -= dt;
+    if (ev.timer <= 0) {
+      this.cleanupDynamicEvent();
+      return;
+    }
+
+    if (ev.kind === 'atm_mugger' && ev.thiefNpc) {
+      ev.x = ev.thiefNpc.x;
+      ev.z = ev.thiefNpc.z;
+      if (!ev.thiefNpc.alive && !this.walletChoicePending) {
+        this.cleanupDynamicEvent();
+      }
+    } else if (ev.kind === 'armored_van' && ev.vanVeh) {
+      ev.x = ev.vanVeh.x;
+      ev.z = ev.vanVeh.z;
+      if (ev.vanVeh.armoredBreached) {
+        ev.subtitle = 'Doors Blown! Grab the Cash Bags on street!';
+      }
+    } else if (ev.kind === 'gang_ambush' && ev.gangEnemies) {
+      const alive = ev.gangEnemies.filter((g) => g.alive);
+      if (alive.length === 0) {
+        this.cash += ev.payout;
+        this.addClout(110);
+        viceAudio.playCashRegister();
+        this.showToast(`Gang Turf Shootout Cleared! +$${ev.payout.toLocaleString()} & +110 Clout`);
+        this.cleanupDynamicEvent();
+      } else {
+        ev.x = alive[0].x;
+        ev.z = alive[0].z;
+        ev.subtitle = `${alive.length} rival gunmen left on the street`;
+      }
+    } else if (ev.kind === 'vip_hitchhiker' && ev.vipNpc) {
+      if (!ev.vipBoarded) {
+        ev.x = ev.vipNpc.x;
+        ev.z = ev.vipNpc.z;
+        if (this.drivingVehicle && Math.hypot(p.x - ev.vipNpc.x, p.z - ev.vipNpc.z) < 7.5 && Math.abs(this.drivingVehicle.state.speed) < 8) {
+          ev.vipBoarded = true;
+          ev.vipNpc.drivingCar = this.drivingVehicle;
+          ev.vipNpc.rig.root.visible = false;
+          this.drivingVehicle.rightDoorTimer = 0.65;
+          viceAudio.playDoorLatch();
+          ev.x = ev.vipDestX ?? 0;
+          ev.z = ev.vipDestZ ?? 2100;
+          ev.timer = 75;
+          ev.subtitle = `Drop VIP at ${ev.vipDestLabel} in ${Math.ceil(ev.timer)}s`;
+          this.setWaypoint(ev.x, ev.z, `VIP Dropoff: ${ev.vipDestLabel}`);
+          this.showToast(`VIP hopped in! Drive to ${ev.vipDestLabel} within 75s for +$${ev.payout}!`);
+        }
+      } else {
+        ev.subtitle = `Drop VIP at ${ev.vipDestLabel} (${Math.ceil(ev.timer)}s)`;
+        if (Math.hypot(p.x - (ev.vipDestX ?? 0), p.z - (ev.vipDestZ ?? 0)) < 18) {
+          this.cash += ev.payout;
+          this.addClout(130);
+          this.adjustRelationship(5, 'Delivered VIP safely');
+          viceAudio.playCashRegister();
+          this.showToast(`VIP Dropped Safely! Tip +$${ev.payout.toLocaleString()} & +130 Clout!`);
+          this.waypoint = null;
+          this.cleanupDynamicEvent();
+        }
+      }
+    }
+  }
+
+  private spawnDynamicWorldEvent() {
+    const p = this.protagonists[this.activeId];
+    if (isWaterSurfaceAt(p.x, p.z)) return;
+    const kinds: DynamicWorldEventHud['kind'][] = ['atm_mugger', 'armored_van', 'gang_ambush', 'vip_hitchhiker'];
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+
+    const offsetAngle = Math.random() * Math.PI * 2;
+    let sx = THREE.MathUtils.clamp(p.x + Math.cos(offsetAngle) * 72, -1600, 1600);
+    let sz = THREE.MathUtils.clamp(p.z + Math.sin(offsetAngle) * 72, -2300, 2300);
+    if (isWaterSurfaceAt(sx, sz)) {
+      sx = ROAD_X.reduce((a, b) => (Math.abs(b - p.x) < Math.abs(a - p.x) ? b : a), ROAD_X[0]);
+      sz = THREE.MathUtils.clamp(p.z + 55, 500, 2300);
+    }
+    const sy = Math.max(LAND_Y, getTerrainHeightAt(sx, sz));
+
+    if (kind === 'atm_mugger') {
+      const stolenAmount = 550 + Math.floor(Math.random() * 900);
+      const victimRig = createCharacterRig('npc', this.textures.contactShadow, 0x38bdf8);
+      victimRig.root.position.set(sx, sy, sz);
+      this.scene.add(victimRig.root);
+      const victim: WorldNPC = {
+        id: `ev_victim_${Date.now()}`,
+        name: 'ATM Victim',
+        archetype: 'Citizen',
+        rig: victimRig,
+        x: sx,
+        y: sy,
+        z: sz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tumbleAngle: 0,
+        yaw: 0,
+        speed: 3.0,
+        walkPhase: 0,
+        kind: 'civilian',
+        hp: 80,
+        alive: true,
+        hostile: false,
+        armed: false,
+        fleeing: true,
+        isWitness: false,
+        witnessTimer: 0,
+        mood: 0,
+        patrolCenterX: sx,
+        patrolCenterZ: sz,
+        wanderTimer: 2,
+        fireCooldown: 0,
+        meleeCooldown: 0,
+        targetProtagonist: this.activeId,
+        targetNpc: null,
+        isMuggerVictim: true,
+      };
+      const thiefRig = createCharacterRig('npc', this.textures.contactShadow, 0xdc2626);
+      thiefRig.root.position.set(sx + 2.5, sy, sz + 2.5);
+      this.scene.add(thiefRig.root);
+      const thief: WorldNPC = {
+        id: `ev_thief_${Date.now()}`,
+        name: 'ATM Mugger',
+        archetype: 'Street Thief',
+        rig: thiefRig,
+        x: sx + 2.5,
+        y: sy,
+        z: sz + 2.5,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tumbleAngle: 0,
+        yaw: 0,
+        speed: 5.5,
+        walkPhase: 0,
+        kind: 'brawler',
+        hp: 65,
+        alive: true,
+        hostile: false,
+        armed: false,
+        fleeing: true,
+        isWitness: false,
+        witnessTimer: 0,
+        mood: -100,
+        patrolCenterX: sx,
+        patrolCenterZ: sz,
+        wanderTimer: 0,
+        fireCooldown: 0,
+        meleeCooldown: 0,
+        targetProtagonist: this.activeId,
+        targetNpc: null,
+        isMuggerThief: true,
+        stolenAmount,
+      };
+      this.npcs.push(victim, thief);
+      this.activeDynamicEvent = {
+        kind: 'atm_mugger',
+        title: 'ATM Mugger Fleeing!',
+        subtitle: `Stop thief carrying $${stolenAmount} stolen wallet`,
+        color: 'blue',
+        x: thief.x,
+        z: thief.z,
+        timer: 75,
+        thiefNpc: thief,
+        victimNpc: victim,
+        payout: stolenAmount,
+      };
+      this.showToast(`WORLD EVENT (Blue Blip): Thief snatched $${stolenAmount} at nearby ATM!`);
+    } else if (kind === 'armored_van') {
+      const roadX = ROAD_X.reduce((a, b) => (Math.abs(b - p.x) < Math.abs(a - p.x) ? b : a), ROAD_X[0]);
+      const vz = p.z > 0 ? THREE.MathUtils.clamp(p.z + 90, 500, 2200) : THREE.MathUtils.clamp(p.z - 90, -2200, -500);
+      const rig = createArmoredCashVanRig(this.textures.contactShadow, this.isSoftwareGl);
+      rig.root.position.set(roadX, LAND_Y, vz);
+      this.scene.add(rig.root);
+      const vanState: VehicleState = {
+        id: `armored_van_${Date.now()}`,
+        name: 'Gruppe Sechs Cash Van',
+        tier: 'truck',
+        fuelType: 'petrol',
+        fuel: 100,
+        maxFuel: 100,
+        health: 150,
+        maxHealth: 150,
+        speed: 0,
+        maxSpeed: 30,
+        hotwired: true,
+        needsKeyCloner: false,
+        gpsTrackerActive: false,
+        gpsTimer: 0,
+        headlightsOn: true,
+        leftBlinker: false,
+        rightBlinker: false,
+        windowsDown: false,
+        trunkOpen: false,
+        hoodOpen: false,
+        convertibleOpen: false,
+        roofIsConvertible: false,
+        seat: 'driver',
+        ducking: false,
+        wheelieActive: false,
+        tireFlat: false,
+        anchorDropped: false,
+        trunkWeapons: [],
+        trunkLoot: 3400,
+        trunkOutfits: [],
+        flooded: false,
+        submersionDepth: 0,
+        turboLevel: 0,
+        wheelStyle: 'stock',
+        colorHex: '#1e293b',
+      };
+      const vanVeh: WorldVehicle = {
+        state: vanState,
+        rig,
+        x: roadX,
+        y: LAND_Y,
+        z: vz,
+        yaw: p.z > 0 ? Math.PI : 0,
+        vy: 0,
+        vx: 0,
+        vz: 0,
+        angVel: 0,
+        steerAngle: 0,
+        wheelSpin: 0,
+        isTraffic: false,
+        isPoliceSpawn: false,
+        isPrecinctUnit: false,
+        trafficDir: 1,
+        trafficAxis: 'z',
+        driverPresent: true,
+        leftDoorAngle: 0,
+        rightDoorAngle: 0,
+        leftDoorTimer: 0,
+        rightDoorTimer: 0,
+        isArmoredVan: true,
+        armoredBreached: false,
+      };
+      this.vehicles.push(vanVeh);
+      this.activeDynamicEvent = {
+        kind: 'armored_van',
+        title: 'Armored Cash Van ($3,400)',
+        subtitle: 'Ram hard or blast rear doors to spill cash!',
+        color: 'red',
+        x: roadX,
+        z: vz,
+        timer: 95,
+        vanVeh,
+        payout: 3400,
+      };
+      this.showToast(`WORLD EVENT (Red Blip): Armored Security Cash Van spotted nearby!`);
+    } else if (kind === 'gang_ambush') {
+      const enemies: WorldNPC[] = [];
+      for (let i = 0; i < 4; i++) {
+        const gx = sx + (i - 1.5) * 3.2;
+        const gz = sz + (i % 2 === 0 ? -2.5 : 2.5);
+        const rig = createCharacterRig('npc', this.textures.contactShadow, i < 2 ? 0x7e22ce : 0xb91c1c);
+        rig.root.position.set(gx, sy, gz);
+        this.scene.add(rig.root);
+        const gNpc: WorldNPC = {
+          id: `ambush_gang_${Date.now()}_${i}`,
+          name: i < 2 ? 'Royals Enforcer' : 'Skulls Shooter',
+          archetype: 'Gang Ambush',
+          rig,
+          x: gx,
+          y: sy,
+          z: gz,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          tumbleAngle: 0,
+          yaw: 0,
+          speed: 4.5,
+          walkPhase: 0,
+          kind: 'gang',
+          gangFaction: i < 2 ? 'royals' : 'skulls',
+          hp: 75,
+          alive: true,
+          hostile: true,
+          armed: true,
+          fleeing: false,
+          isWitness: false,
+          witnessTimer: 0,
+          mood: -90,
+          patrolCenterX: sx,
+          patrolCenterZ: sz,
+          wanderTimer: 0,
+          fireCooldown: 1.0 + i * 0.25,
+          meleeCooldown: 0,
+          targetProtagonist: this.activeId,
+          targetNpc: null,
+        };
+        this.npcs.push(gNpc);
+        enemies.push(gNpc);
+      }
+      this.activeDynamicEvent = {
+        kind: 'gang_ambush',
+        title: 'Gang Turf Shootout!',
+        subtitle: 'Clear all 4 gunmen for $1,400 stash',
+        color: 'red',
+        x: sx,
+        z: sz,
+        timer: 90,
+        gangEnemies: enemies,
+        payout: 1400,
+      };
+      this.showToast(`WORLD EVENT (Red Blip): Gang Ambush Shootout nearby!`);
+    } else {
+      const dest = p.z > 0 ? { x: -1350, z: 2100, label: 'South Vice Airport' } : { x: 0, z: 1050, label: 'Downtown Vice Plaza' };
+      const payout = 1050 + Math.floor(Math.random() * 400);
+      const vipRig = createCharacterRig('npc', this.textures.contactShadow, 0xfacc15);
+      vipRig.root.position.set(sx, sy, sz);
+      this.scene.add(vipRig.root);
+      const vipNpc: WorldNPC = {
+        id: `vip_hitch_${Date.now()}`,
+        name: 'Stranded VIP',
+        archetype: 'Hitchhiker',
+        rig: vipRig,
+        x: sx,
+        y: sy,
+        z: sz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tumbleAngle: 0,
+        yaw: 0,
+        speed: 3.0,
+        walkPhase: 0,
+        kind: 'civilian',
+        hp: 100,
+        alive: true,
+        hostile: false,
+        armed: false,
+        fleeing: false,
+        isWitness: false,
+        witnessTimer: 0,
+        mood: 50,
+        patrolCenterX: sx,
+        patrolCenterZ: sz,
+        wanderTimer: 0,
+        fireCooldown: 0,
+        meleeCooldown: 0,
+        targetProtagonist: this.activeId,
+        targetNpc: null,
+        isHitchhiker: true,
+      };
+      this.npcs.push(vipNpc);
+      this.activeDynamicEvent = {
+        kind: 'vip_hitchhiker',
+        title: 'Stranded VIP Need Ride!',
+        subtitle: `Pull up in a car for +$${payout} tip`,
+        color: 'blue',
+        x: sx,
+        z: sz,
+        timer: 75,
+        vipNpc,
+        vipBoarded: false,
+        vipDestX: dest.x,
+        vipDestZ: dest.z,
+        vipDestLabel: dest.label,
+        payout,
+      };
+      this.showToast(`WORLD EVENT (Blue Blip): Stranded VIP waving for a ride (+$${payout})!`);
+    }
+  }
+
+  private cleanupDynamicEvent() {
+    if (!this.activeDynamicEvent) return;
+    const ev = this.activeDynamicEvent;
+    if (ev.thiefNpc) ev.thiefNpc.isMuggerThief = false;
+    if (ev.vipNpc) {
+      ev.vipNpc.rig.root.visible = false;
+      ev.vipNpc.alive = false;
+    }
+    this.activeDynamicEvent = null;
+  }
+
+  public resolveWalletChoice(keep: boolean) {
+    if (!this.walletChoicePending) return;
+    const { amount, victimName } = this.walletChoicePending;
+    this.walletChoicePending = null;
+    if (keep) {
+      this.cash += amount;
+      this.profile.violencePoints += 8;
+      this.updateCriminalProfileLabel();
+      this.showToast(`Kept Stolen Wallet (+$${amount.toLocaleString()})`);
+    } else {
+      this.cash += 250;
+      this.profile.stealthPoints += 12;
+      this.updateCriminalProfileLabel();
+      this.addClout(80);
+      this.showToast(`Returned Wallet to ${victimName}! (+$250 Tip, +80 Clout & Clean Rep)`);
+    }
+    viceAudio.playCashRegister();
+    this.cleanupDynamicEvent();
+    this.pushHud();
+  }
+
+  // ---- UNDERGROUND FIGHT CLUB ----
+  public startFightClub() {
+    if (this.activeFightClub.active || this.drivingVehicle) return;
+    const p = this.protagonists[this.activeId];
+    p.x = FIGHT_CLUB_ARENA.x;
+    p.z = FIGHT_CLUB_ARENA.z + 4.5;
+    p.y = LAND_Y + 0.85;
+    p.equippedWeaponId = 'fists';
+    this.syncProtagonistWeapons(p);
+    this.activeFightClub = {
+      active: true,
+      wave: 1,
+      boxers: [],
+      prizePool: 400,
+    };
+    this.spawnFightClubWave(1);
+    viceAudio.playUiChime(true);
+    this.showToast('FIGHT CLUB WAVE 1! Fight Unarmed — Block (RMB / C) & Dodge (Alt)!');
+    this.pushHud();
+  }
+
+  private spawnFightClubWave(wave: number) {
+    this.activeFightClub.wave = wave;
+    this.activeFightClub.prizePool = wave === 1 ? 400 : wave === 2 ? 750 : 1400;
+    const count = wave === 1 ? 1 : wave === 2 ? 2 : 3;
+    const spawned: WorldNPC[] = [];
+    for (let i = 0; i < count; i++) {
+      const bx = FIGHT_CLUB_ARENA.x + (i - (count - 1) / 2) * 3.2;
+      const bz = FIGHT_CLUB_ARENA.z - 4.2;
+      const rig = createCharacterRig('npc', this.textures.contactShadow, wave === 3 ? 0xdc2626 : 0x1e293b);
+      rig.root.position.set(bx, LAND_Y + 0.85, bz);
+      this.scene.add(rig.root);
+      const boxer: WorldNPC = {
+        id: `fc_boxer_${Date.now()}_${wave}_${i}`,
+        name: `Pit Fighter W${wave}`,
+        archetype: 'Fight Club Boxer',
+        rig,
+        x: bx,
+        y: LAND_Y + 0.85,
+        z: bz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tumbleAngle: 0,
+        yaw: 0,
+        speed: 3.6 + wave * 0.45,
+        walkPhase: 0,
+        kind: 'brawler',
+        hp: 65 + wave * 25,
+        alive: true,
+        hostile: true,
+        armed: false,
+        fleeing: false,
+        isWitness: false,
+        witnessTimer: 0,
+        mood: -100,
+        patrolCenterX: FIGHT_CLUB_ARENA.x,
+        patrolCenterZ: FIGHT_CLUB_ARENA.z,
+        wanderTimer: 0,
+        fireCooldown: 0,
+        meleeCooldown: 0.7,
+        targetProtagonist: this.activeId,
+        targetNpc: null,
+        isFightClubBoxer: true,
+      };
+      this.npcs.push(boxer);
+      spawned.push(boxer);
+    }
+    this.activeFightClub.boxers = spawned;
+  }
+
+  private updateFightClub(dt: number) {
+    if (this.fightDodgeCooldown > 0) this.fightDodgeCooldown = Math.max(0, this.fightDodgeCooldown - dt);
+    if (!this.activeFightClub.active) return;
+
+    const p = this.protagonists[this.activeId];
+    if (Math.hypot(p.x - FIGHT_CLUB_ARENA.x, p.z - FIGHT_CLUB_ARENA.z) > 22) {
+      this.endFightClub(false);
+      this.showToast('Left Fight Club Ring — Match Forfeited!');
+      return;
+    }
+    // Keep boxers inside ring
+    for (const b of this.activeFightClub.boxers) {
+      if (!b.alive) continue;
+      b.x = THREE.MathUtils.clamp(b.x, FIGHT_CLUB_ARENA.x - 7.5, FIGHT_CLUB_ARENA.x + 7.5);
+      b.z = THREE.MathUtils.clamp(b.z, FIGHT_CLUB_ARENA.z - 7.5, FIGHT_CLUB_ARENA.z + 7.5);
+      b.y = LAND_Y + 0.85;
+    }
+
+    const aliveCount = this.activeFightClub.boxers.filter((b) => b.alive).length;
+    if (aliveCount === 0) {
+      const reward = this.activeFightClub.prizePool;
+      this.cash += reward;
+      p.stats.muscle = Math.min(100, p.stats.muscle + 4);
+      this.addClout(85);
+      viceAudio.playCashRegister();
+      if (this.activeFightClub.wave < 3) {
+        const nextWave = this.activeFightClub.wave + 1;
+        this.showToast(`WAVE ${this.activeFightClub.wave} KNOCKOUT! +$${reward} · Wave ${nextWave} starting!`);
+        this.spawnFightClubWave(nextWave);
+      } else {
+        this.showToast(`FIGHT CLUB CHAMPION! +$${reward} · +Muscle & +85 Clout!`);
+        this.endFightClub(true);
+      }
+    }
+  }
+
+  private endFightClub(won: boolean) {
+    for (const b of this.activeFightClub.boxers) {
+      b.alive = false;
+      b.rig.root.visible = false;
+    }
+    this.activeFightClub = { active: false, wave: 0, boxers: [], prizePool: 0 };
+    this.fightBlocking = false;
+    void won;
+  }
+
+  public setFightBlock(active: boolean) {
+    this.fightBlocking = active;
+    this.pushHud();
+  }
+
+  public triggerFightDodge() {
+    if (this.fightDodgeCooldown > 0) return;
+    const p = this.protagonists[this.activeId];
+    if (this.drivingVehicle || p.inWater || p.stamina < 10) return;
+    this.fightDodgeCooldown = 0.65;
+    p.stamina = Math.max(0, p.stamina - 10);
+    p.actionState = 'dodge';
+    this.actionTimer = 0.4;
+    const dx = -Math.sin(p.yaw);
+    const dz = -Math.cos(p.yaw);
+    if (!this.collidesWithSolidWall(p.x + dx * 2.0, p.z + dz * 2.0, 0.45)) {
+      p.x += dx * 1.9;
+      p.z += dz * 1.9;
+    }
+    this.pushHud();
+  }
+
+  // ---- MIDNIGHT UNDERGROUND STREET RACE ----
+  public startMidnightRace() {
+    if (this.activeRace.active) return;
+    const wager = 800;
+    if (this.cash < wager) {
+      this.showToast(`Midnight Street Race requires a $${wager} entry wager!`);
+      return;
+    }
+    const hrs = Math.floor(this.timeNormalized * 24);
+    if (hrs < 20 && hrs >= 6) {
+      // Advance cleanly to 21:30 Midnight Street Meet!
+      this.timeNormalized = 21.5 / 24;
+    }
+    if (!this.drivingVehicle) {
+      this.showToast('Bring a car or sportbike to the checkered start gate to race!');
+      return;
+    }
+    this.cash -= wager;
+
+    const cp0 = MIDNIGHT_RACE_CIRCUIT.checkpoints[0];
+    const racers: Array<{ veh: WorldVehicle; cpIdx: number; finished: boolean }> = [];
+    const racerColors = ['#ef4444', '#a855f7', '#22d3ee', '#f97316'];
+    const racerTiers: VehicleTier[] = ['luxury', 'muscle', 'luxury', 'muscle'];
+    for (let i = 0; i < 4; i++) {
+      const rx = MIDNIGHT_RACE_CIRCUIT.startX + (i % 2 === 0 ? -4.2 : 4.2);
+      const rz = MIDNIGHT_RACE_CIRCUIT.startZ - 6 - Math.floor(i / 2) * 7;
+      const rig = createVehicleRig(racerTiers[i], racerColors[i], this.textures.contactShadow, this.isSoftwareGl);
+      rig.root.position.set(rx, LAND_Y, rz);
+      this.scene.add(rig.root);
+      const rState: VehicleState = {
+        id: `street_racer_${Date.now()}_${i}`,
+        name: `Midnight Racer #${i + 1}`,
+        tier: racerTiers[i],
+        fuelType: 'petrol',
+        fuel: 100,
+        maxFuel: 100,
+        health: 100,
+        maxHealth: 100,
+        speed: 0,
+        maxSpeed: 40 + i * 1.8,
+        hotwired: true,
+        needsKeyCloner: false,
+        gpsTrackerActive: false,
+        gpsTimer: 0,
+        headlightsOn: true,
+        leftBlinker: false,
+        rightBlinker: false,
+        windowsDown: false,
+        trunkOpen: false,
+        hoodOpen: false,
+        convertibleOpen: false,
+        roofIsConvertible: false,
+        seat: 'driver',
+        ducking: false,
+        wheelieActive: false,
+        tireFlat: false,
+        anchorDropped: false,
+        trunkWeapons: [],
+        trunkLoot: 0,
+        trunkOutfits: [],
+        flooded: false,
+        submersionDepth: 0,
+        turboLevel: 1,
+        wheelStyle: 'sport',
+        colorHex: racerColors[i],
+      };
+      const veh: WorldVehicle = {
+        state: rState,
+        rig,
+        x: rx,
+        y: LAND_Y,
+        z: rz,
+        yaw: Math.atan2(cp0.x - rx, cp0.z - rz),
+        vy: 0,
+        vx: 0,
+        vz: 0,
+        angVel: 0,
+        steerAngle: 0,
+        wheelSpin: 0,
+        isTraffic: false,
+        isPoliceSpawn: false,
+        isPrecinctUnit: false,
+        trafficDir: 1,
+        trafficAxis: 'z',
+        driverPresent: true,
+        leftDoorAngle: 0,
+        rightDoorAngle: 0,
+        leftDoorTimer: 0,
+        rightDoorTimer: 0,
+        isRacer: true,
+      };
+      this.vehicles.push(veh);
+      racers.push({ veh, cpIdx: 0, finished: false });
+    }
+
+    this.activeRace = {
+      active: true,
+      cpIdx: 0,
+      elapsedSec: 0,
+      wager,
+      racerVehicles: racers,
+    };
+    if (this.raceCheckpointMesh) {
+      this.raceCheckpointMesh.visible = true;
+      this.raceCheckpointMesh.position.set(cp0.x, LAND_Y, cp0.z);
+    }
+    this.setWaypoint(cp0.x, cp0.z, `Race CP 1/${MIDNIGHT_RACE_CIRCUIT.checkpoints.length}`);
+    viceAudio.playHorn();
+    this.showToast('3... 2... 1... GO! Midnight Street Race started!');
+    this.pushHud();
+  }
+
+  private computeActiveRaceHud(): ActiveRaceHud {
+    const cps = MIDNIGHT_RACE_CIRCUIT.checkpoints;
+    const p = this.protagonists[this.activeId];
+    const pNext = cps[this.activeRace.cpIdx] ?? cps[cps.length - 1];
+    const pScore = this.activeRace.cpIdx * 10000 - Math.hypot(p.x - pNext.x, p.z - pNext.z);
+    let pos = 1;
+    for (const r of this.activeRace.racerVehicles) {
+      const rNext = cps[r.cpIdx] ?? cps[cps.length - 1];
+      const rScore = (r.finished ? cps.length + 1 : r.cpIdx) * 10000 - Math.hypot(r.veh.x - rNext.x, r.veh.z - rNext.z);
+      if (rScore > pScore) pos++;
+    }
+    return {
+      name: MIDNIGHT_RACE_CIRCUIT.name,
+      position: pos,
+      totalRacers: this.activeRace.racerVehicles.length + 1,
+      checkpointIndex: this.activeRace.cpIdx + 1,
+      totalCheckpoints: cps.length,
+      wager: this.activeRace.wager,
+      elapsedSec: Math.floor(this.activeRace.elapsedSec),
+    };
+  }
+
+  private updateMidnightRace(dt: number) {
+    if (!this.activeRace.active) return;
+    const cps = MIDNIGHT_RACE_CIRCUIT.checkpoints;
+    this.activeRace.elapsedSec += dt;
+    const p = this.protagonists[this.activeId];
+
+    // Move AI street racers along circuit
+    for (const r of this.activeRace.racerVehicles) {
+      if (r.finished) continue;
+      const cp = cps[r.cpIdx];
+      const d = Math.hypot(cp.x - r.veh.x, cp.z - r.veh.z);
+      if (d < 14) {
+        r.cpIdx++;
+        if (r.cpIdx >= cps.length) r.finished = true;
+      } else {
+        const ty = Math.atan2(cp.x - r.veh.x, cp.z - r.veh.z);
+        r.veh.yaw = this.dampAngle(r.veh.yaw, ty, 5.2, dt);
+        const spd = Math.min(r.veh.state.maxSpeed, 34);
+        const nx = r.veh.x + Math.sin(r.veh.yaw) * spd * dt;
+        const nz = r.veh.z + Math.cos(r.veh.yaw) * spd * dt;
+        if (!this.collidesWithSolidWall(nx, nz, 1.4)) {
+          r.veh.x = nx;
+          r.veh.z = nz;
+        }
+        r.veh.wheelSpin += spd * dt * 2.4;
+      }
+    }
+
+    if (this.raceCheckpointMesh) {
+      this.raceCheckpointMesh.rotation.y += dt * 1.4;
+    }
+
+    const curCp = cps[this.activeRace.cpIdx];
+    if (curCp && Math.hypot(p.x - curCp.x, p.z - curCp.z) < 15) {
+      this.activeRace.cpIdx++;
+      viceAudio.playUiChime(true);
+      if (this.activeRace.cpIdx >= cps.length) {
+        const finishedBefore = this.activeRace.racerVehicles.filter((r) => r.finished).length;
+        const rank = finishedBefore + 1;
+        const prize = rank === 1 ? 3800 : rank === 2 ? 1600 : rank === 3 ? 900 : 0;
+        if (prize > 0) {
+          this.cash += prize;
+          this.addClout(rank === 1 ? 180 : 90);
+          viceAudio.playCashRegister();
+          this.showToast(`STREET RACE FINISHED #${rank}! Won $${prize.toLocaleString()} & Clout!`);
+        } else {
+          this.showToast(`Finished #${rank} — Better luck next Midnight Meet!`);
+        }
+        this.activeRace.active = false;
+        this.waypoint = null;
+        if (this.raceCheckpointMesh) this.raceCheckpointMesh.visible = false;
+        for (const r of this.activeRace.racerVehicles) {
+          r.veh.isRacer = false;
+          r.veh.isTraffic = true;
+        }
+        this.activeRace.racerVehicles = [];
+      } else {
+        const nxt = cps[this.activeRace.cpIdx];
+        if (this.raceCheckpointMesh) this.raceCheckpointMesh.position.set(nxt.x, LAND_Y, nxt.z);
+        this.setWaypoint(nxt.x, nxt.z, `Race CP ${this.activeRace.cpIdx + 1}/${cps.length}`);
+      }
+    }
+  }
+
+  // ---- BEACH & PIER FISHING ----
+  private isOnWoodenDock(x: number, z: number): boolean {
+    for (const d of WOODEN_DOCKS) {
+      if (x >= d.xMin - 1 && x <= d.xMax + 1 && z >= d.zMin - 1 && z <= d.zMax + 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public triggerFishingAction() {
+    if (!this.fishingState.active || this.drivingVehicle) return;
+    if (this.fishingState.state === 'idle') {
+      this.fishingState.state = 'waiting';
+      this.fishingTimer = 2.5 + Math.random() * 2.5;
+      this.fishingState.biteProgress = 0;
+      this.fishingState.tension = 30;
+      viceAudio.playUiChime(true);
+      this.showToast('Cast line into Leonida Bay — wait for a bite!');
+    } else if (this.fishingState.state === 'waiting') {
+      this.fishingState.state = 'idle';
+      if (this.fishingBobberMesh) this.fishingBobberMesh.visible = false;
+      this.showToast('Reeled line back in.');
+    } else if (this.fishingState.state === 'biting' || this.fishingState.state === 'reeling') {
+      this.fishingState.state = 'reeling';
+      this.fishingState.biteProgress = Math.min(100, this.fishingState.biteProgress + 28);
+      this.fishingState.tension = Math.min(100, this.fishingState.tension + 16);
+      viceAudio.playImpact(false);
+      if (this.fishingState.biteProgress >= 100) {
+        const catches = [
+          { name: 'Vice Snapper', value: 140 },
+          { name: 'Golden Mahi', value: 240 },
+          { name: 'Channel Tarpon', value: 320 },
+          { name: 'Neon Marlin', value: 480 },
+        ];
+        const fish = catches[Math.floor(Math.random() * catches.length)];
+        this.fishingState.caughtCount++;
+        this.fishingState.bagValue += fish.value;
+        this.fishingState.lastCatchName = fish.name;
+        this.fishingState.state = 'idle';
+        this.addClout(20);
+        if (this.fishingBobberMesh) this.fishingBobberMesh.visible = false;
+        viceAudio.playCashRegister();
+        this.showToast(`CAUGHT ${fish.name.toUpperCase()} ($${fish.value})! Sell at Northport Harbor Market!`);
+      }
+    }
+    this.pushHud();
+  }
+
+  public sellCaughtFish() {
+    if (this.fishingState.caughtCount <= 0) return;
+    const earned = this.fishingState.bagValue;
+    const count = this.fishingState.caughtCount;
+    this.cash += earned;
+    this.fishingState.caughtCount = 0;
+    this.fishingState.bagValue = 0;
+    this.fishingState.lastCatchName = null;
+    this.addClout(45);
+    viceAudio.playCashRegister();
+    this.showToast(`Sold ${count} fresh fish for +$${earned.toLocaleString()} & +45 Clout!`);
+    this.pushHud();
+  }
+
+  private updatePierFishing(dt: number) {
+    const p = this.protagonists[this.activeId];
+    const onPier = !this.drivingVehicle && this.isOnWoodenDock(p.x, p.z);
+    this.fishingState.active = onPier;
+
+    if (!onPier && this.fishingState.state !== 'idle') {
+      this.fishingState.state = 'idle';
+      if (this.fishingBobberMesh) this.fishingBobberMesh.visible = false;
+    }
+    if (!onPier || this.fishingState.state === 'idle') return;
+
+    if (this.fishingBobberMesh) {
+      this.fishingBobberMesh.visible = true;
+      const bx = p.x + Math.sin(p.yaw) * 4.5;
+      const bz = p.z + Math.cos(p.yaw) * 4.5;
+      const bobOffset = this.fishingState.state === 'biting' || this.fishingState.state === 'reeling' ? Math.sin(this.elapsedSec * 16) * 0.22 : Math.sin(this.elapsedSec * 2.5) * 0.06;
+      this.fishingBobberMesh.position.set(bx, getWaterWaveHeight(bx, bz, this.elapsedSec, this.currentStormFactor) + bobOffset, bz);
+    }
+
+    if (this.fishingState.state === 'waiting') {
+      this.fishingTimer -= dt;
+      if (this.fishingTimer <= 0) {
+        this.fishingState.state = 'biting';
+        this.fishingTimer = 6.5;
+        viceAudio.playUiChime(true);
+        this.showToast('FISH ON! Tap [Reel Fish] / [E] quickly!');
+      }
+    } else if (this.fishingState.state === 'biting' || this.fishingState.state === 'reeling') {
+      this.fishingTimer -= dt;
+      this.fishingState.tension = Math.max(0, this.fishingState.tension - dt * 14);
+      if (this.fishingTimer <= 0) {
+        this.fishingState.state = 'idle';
+        if (this.fishingBobberMesh) this.fishingBobberMesh.visible = false;
+        this.showToast('The fish slipped the hook! Cast again.');
+      }
+    }
+  }
+
+  // ---- VIP CLOUT CONTRACTS ----
+  public startVipContract(id: string) {
+    const c = this.vipContracts.find((vc) => vc.id === id);
+    if (!c || this.clout < c.minClout || c.completed) return;
+    this.activeVipContractId = c.id;
+    this.setWaypoint(c.x, c.z, `VIP: ${c.title}`);
+    this.closeModal();
+    viceAudio.playUiChime(true);
+    this.showToast(`VIP Contract Started: ${c.title} (+$${c.rewardCash.toLocaleString()})`);
+    this.pushHud();
+  }
+
+  private updateActiveVipContract() {
+    if (!this.activeVipContractId) return;
+    const c = this.vipContracts.find((vc) => vc.id === this.activeVipContractId);
+    if (!c || c.completed) return;
+    const p = this.protagonists[this.activeId];
+    const dist = Math.hypot(p.x - c.x, p.z - c.z);
+
+    let done = false;
+    if (c.id === 'vip_1' && dist < 35) {
+      done = true;
+    } else if (c.id === 'vip_2' && dist < 32) {
+      done = true;
+    } else if (c.id === 'vip_3' && (dist < 40 || (this.drivingVehicle && this.drivingVehicle.state.tier === 'plane' && dist < 85))) {
+      done = true;
+    }
+
+    if (done) {
+      c.completed = true;
+      this.activeVipContractId = null;
+      this.cash += c.rewardCash;
+      this.addClout(220);
+      this.waypoint = null;
+      viceAudio.playCashRegister();
+      this.showToast(`VIP CONTRACT PASSED: ${c.title}! +$${c.rewardCash.toLocaleString()} & +220 Clout`);
+    }
   }
 
   public dispose() {

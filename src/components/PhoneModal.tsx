@@ -55,6 +55,7 @@ interface PhoneModalProps {
   onEatBurger: () => void;
   onBookTaxi: (x: number, z: number, label: string) => void;
   onCancelTaxi: () => void;
+  onStartVipContract: (id: string) => void;
 }
 
 type PhoneTab = 'messages' | 'bank' | 'stocks' | 'darkweb' | 'jobs' | 'social' | 'duo' | 'gps';
@@ -87,6 +88,7 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
   onEatBurger,
   onBookTaxi,
   onCancelTaxi,
+  onStartVipContract,
 }) => {
   const [tab, setTab] = useState<PhoneTab>('messages');
   const [customMsg, setCustomMsg] = useState('');
@@ -465,6 +467,73 @@ export const PhoneModal: React.FC<PhoneModalProps> = ({
 
           {tab === 'social' && (
             <div className="space-y-2.5">
+              {/* Clout Rank, 25/25 Golden Briefcases & Criminal Profile Perk */}
+              <div className="bg-[#151928] border border-amber-400/35 rounded-xl p-2.5 space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white">{hud.cloutTierLabel}</span>
+                  <span className="font-mono-num text-amber-300 font-semibold">{hud.clout} Clout</span>
+                </div>
+                <div className="flex items-center justify-between text-neutral-300">
+                  <span>Golden Briefcases</span>
+                  <span className="font-mono-num text-yellow-300 font-bold">
+                    {hud.collectiblesFound}/25 {hud.goldSkinUnlocked ? '· 24K GOLD' : ''}
+                  </span>
+                </div>
+                <div className="text-[10px] text-[#2dd4bf]">
+                  {hud.profile.label}
+                  {hud.profileDiscountPct > 0
+                    ? ` · ${hud.profileDiscountPct}% Shop Discount Active`
+                    : hud.profile.label === 'Ruthless Enforcer'
+                    ? ' · Instant Cashier Intimidation'
+                    : ''}
+                </div>
+              </div>
+
+              {/* VIP Clout Contracts */}
+              <div className="text-[11px] font-semibold text-amber-300 uppercase tracking-wider pt-0.5">
+                VIP Clout Contracts
+              </div>
+              {hud.vipContracts.map((vc) => {
+                const locked = hud.clout < vc.minClout && !vc.completed;
+                return (
+                  <div key={vc.id} className="bg-[#151928] border border-white/10 rounded-xl p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-white truncate">{vc.title}</span>
+                      <span className="font-mono-num text-emerald-400 font-semibold shrink-0">+${vc.rewardCash}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-neutral-400">
+                      <span>{vc.district}</span>
+                      <span>Req: {vc.minClout} Clout</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={locked || vc.completed}
+                      onClick={() => onStartVipContract(vc.id)}
+                      className={`w-full py-1 rounded text-[11px] font-semibold cursor-pointer ${
+                        vc.completed
+                          ? 'bg-emerald-500/20 text-emerald-300 cursor-default'
+                          : locked
+                          ? 'bg-white/5 text-neutral-500 cursor-not-allowed'
+                          : vc.active
+                          ? 'bg-[#2dd4bf] text-neutral-950'
+                          : 'bg-amber-400 hover:bg-amber-300 text-neutral-950'
+                      }`}
+                    >
+                      {vc.completed
+                        ? 'Contract Completed'
+                        : locked
+                        ? `Need ${vc.minClout} Clout`
+                        : vc.active
+                        ? 'Tracking on GPS'
+                        : 'Start VIP Contract'}
+                    </button>
+                  </div>
+                );
+              })}
+
+              <div className="text-[11px] font-semibold text-rose-300 uppercase tracking-wider pt-0.5">
+                ViceLive Viral Feed
+              </div>
               {socialPosts.map((post) => (
                 <div key={post.id} className="bg-[#151928] border border-white/10 rounded-xl p-2.5 space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">

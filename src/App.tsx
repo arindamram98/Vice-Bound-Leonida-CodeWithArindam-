@@ -78,6 +78,11 @@ export default function App() {
           onCancelTaxi={() => engine?.cancelTaxi()}
           onEatBurgerShop={() => engine?.eatAtBurgerShop()}
           onInvitePartnerSit={() => engine?.invitePartnerSitNearby()}
+          onResolveWalletChoice={(keep) => engine?.resolveWalletChoice(keep)}
+          onFishingAction={() => engine?.triggerFishingAction()}
+          onSellFish={() => engine?.sellCaughtFish()}
+          onFightBlock={(active) => engine?.setFightBlock(active)}
+          onFightDodge={() => engine?.triggerFightDodge()}
         />
       )}
 
@@ -140,6 +145,7 @@ export default function App() {
           onEatBurger={() => engine.eatBurger()}
           onBookTaxi={(x, z, label) => engine.bookTaxi(x, z, label)}
           onCancelTaxi={() => engine.cancelTaxi()}
+          onStartVipContract={(id) => engine.startVipContract(id)}
         />
       )}
 

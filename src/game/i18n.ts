@@ -99,6 +99,15 @@ export const UI_STRINGS = {
     startJobBtn: 'Start Job',
     invitePartnerBtn: 'Invite Partner',
     buyTicketBtn: 'Fly Ticket ($150)',
+    keepWallet: 'Keep Wallet',
+    returnWallet: 'Return to Victim',
+    castLine: 'Cast Line',
+    reelFish: 'Reel In!',
+    sellFish: 'Sell Fish',
+    blockBtn: 'Block',
+    dodgeBtn: 'Dodge',
+    enterFightClub: 'Enter Fight Club',
+    startRace: 'Start Midnight Race',
   },
   hinglish: {
     enterLeonida: 'Leonida Mein Jao',
@@ -198,6 +207,15 @@ export const UI_STRINGS = {
     startJobBtn: 'Job Shuru Karo',
     invitePartnerBtn: 'Partner Bulao',
     buyTicketBtn: 'Flight Ticket ($150)',
+    keepWallet: 'Batua Rakh Lo',
+    returnWallet: 'Waapas Kar Do',
+    castLine: 'Kaanta Daalo',
+    reelFish: 'Machhli Khincho!',
+    sellFish: 'Machhli Becho',
+    blockBtn: 'Block Karo',
+    dodgeBtn: 'Bachao (Dodge)',
+    enterFightClub: 'Fight Club Khelo',
+    startRace: 'Midnight Race Shuru',
   },
 } as const;
 
@@ -271,6 +289,10 @@ export function localizeGameString(lang: GameLanguage | undefined, text: string)
     [/Hey! Watch where you're looking!/gi, 'Oye! Sahi se dekh ke chal!'],
     [/Watch where you're going!/gi, 'Dekh ke chal bhai!'],
     [/Step back right now!/gi, 'Peeche hat ja abhi!'],
+    [/Cast Fishing Line/gi, 'Pier Se Machhli Pakdo (Cast)'],
+    [/Sell Caught Fish/gi, 'Pakdi Machhliyan Becho'],
+    [/Enter Underground Fight Club/gi, 'Fight Club Ring Mein Utro'],
+    [/Start Midnight Street Race/gi, 'Midnight Street Race Shuru Karo'],
   ];
 
   let out = text;

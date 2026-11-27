@@ -51,6 +51,11 @@ interface HUDProps {
   onCancelTaxi: () => void;
   onEatBurgerShop: () => void;
   onInvitePartnerSit: () => void;
+  onResolveWalletChoice: (keep: boolean) => void;
+  onFishingAction: () => void;
+  onSellFish: () => void;
+  onFightBlock: (active: boolean) => void;
+  onFightDodge: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -74,6 +79,11 @@ export const HUD: React.FC<HUDProps> = ({
   onCancelTaxi,
   onEatBurgerShop,
   onInvitePartnerSit,
+  onResolveWalletChoice,
+  onFishingAction,
+  onSellFish,
+  onFightBlock,
+  onFightDodge,
 }) => {
   const minimapRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -256,6 +266,17 @@ export const HUD: React.FC<HUDProps> = ({
         drawBadge(ex, ey, '#22c55e', 'BK');
       } else if (ent.kind === 'drop') {
         drawBadge(ex, ey, '#4ade80', '★');
+      } else if (ent.kind === 'event_blue') {
+        drawBadge(ex, ey, '#38bdf8', '!');
+      } else if (ent.kind === 'event_red') {
+        drawBadge(ex, ey, '#ef4444', '!');
+      } else if (ent.kind === 'fightclub') {
+        drawBadge(ex, ey, '#f43f5e', 'FC');
+      } else if (ent.kind === 'race') {
+        drawBadge(ex, ey, '#22d3ee', 'RC');
+      } else if (ent.kind === 'stunt') {
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(ex - 2, ey - 2, 4, 4);
       } else if (ent.kind === 'gas') {
         ctx.fillStyle = '#10b981';
         ctx.fillRect(ex - 2.5, ey - 2.5, 5, 5);
@@ -746,12 +767,60 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       </div>
 
-      {/* CENTER TOAST */}
-      {hud.toastMessage && (
-        <div className="mx-auto bg-[#10121c]/95 border border-[#2dd4bf]/45 text-white text-xs font-medium px-4 py-2 rounded-lg">
-          {hud.toastMessage}
-        </div>
-      )}
+      {/* TOP-CENTER DYNAMIC EVENTS, STUNT BANNER, STREET RACE & TOAST */}
+      <div className="mx-auto flex flex-col items-center gap-1.5 max-w-[92vw] pointer-events-none">
+        {hud.activeDynamicEvent && (
+          <div
+            className={`bg-[#0e111a]/92 border rounded-xl px-3 py-1.5 text-[11px] flex items-center gap-2 max-w-full ${
+              hud.activeDynamicEvent.blipColor === 'red' ? 'border-rose-500/60' : 'border-sky-400/60'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                hud.activeDynamicEvent.blipColor === 'red' ? 'bg-rose-500' : 'bg-sky-400'
+              }`}
+            />
+            <span className="font-bold text-white truncate">{hud.activeDynamicEvent.title}</span>
+            <span className="text-neutral-300 truncate hidden sm:inline">{hud.activeDynamicEvent.subtitle}</span>
+            <span className="font-mono-num text-amber-300 font-semibold shrink-0">
+              {Math.ceil(hud.activeDynamicEvent.timerSec)}s
+            </span>
+          </div>
+        )}
+
+        {hud.stuntBanner && (
+          <div className="bg-[#14120c]/95 border border-amber-400/75 rounded-xl px-4 py-2 text-center shadow-xl">
+            <div className="text-[10px] font-mono-num uppercase tracking-widest text-amber-300 font-bold">
+              {hud.stuntBanner.active ? 'INSANE STUNT AIRBORNE' : 'STUNT JUMP COMPLETED'} · {hud.stuntBanner.name}
+            </div>
+            <div className="flex items-center justify-center gap-3 text-xs font-mono-num font-bold text-white mt-0.5">
+              <span>{hud.stuntBanner.distanceM}m Dist</span>
+              <span>{hud.stuntBanner.heightM}m Peak</span>
+              {!hud.stuntBanner.active && hud.stuntBanner.bonusCash > 0 && (
+                <span className="text-emerald-400">+${hud.stuntBanner.bonusCash}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hud.activeRace && (
+          <div className="bg-[#0d141d]/94 border border-cyan-400/60 rounded-xl px-3.5 py-1.5 flex items-center gap-3 text-xs font-mono-num">
+            <span className="font-bold text-cyan-300">
+              POS {hud.activeRace.position}/{hud.activeRace.totalRacers}
+            </span>
+            <span className="text-white">
+              CP {hud.activeRace.checkpointIndex}/{hud.activeRace.totalCheckpoints}
+            </span>
+            <span className="text-amber-300">{hud.activeRace.elapsedSec.toFixed(1)}s</span>
+          </div>
+        )}
+
+        {hud.toastMessage && (
+          <div className="bg-[#10121c]/95 border border-[#2dd4bf]/45 text-white text-xs font-medium px-4 py-2 rounded-lg text-center">
+            {hud.toastMessage}
+          </div>
+        )}
+      </div>
 
       {/* BOTTOM ROW */}
       <div className="flex items-end justify-between gap-4">
@@ -894,6 +963,137 @@ export const HUD: React.FC<HUDProps> = ({
               <span>&ldquo;{hud.npcSubtitle.text}&rdquo;</span>
             </div>
           )}
+
+          {hud.activeFightClub && (
+            <div className="bg-[#180f16]/94 border border-rose-500/55 rounded-xl px-3 py-2 flex flex-col items-center gap-1.5 max-w-[92vw] shadow-xl">
+              <div className="flex items-center gap-2.5 text-[11px] font-mono-num">
+                <span className="font-bold text-rose-300">FIGHT CLUB · WAVE {hud.activeFightClub.wave}/3</span>
+                <span className="text-white">{hud.activeFightClub.opponentsAlive} Left</span>
+                <span className="text-emerald-400 font-bold">${hud.activeFightClub.prizePool}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onPointerDown={() => onFightBlock(true)}
+                  onPointerUp={() => onFightBlock(false)}
+                  onPointerLeave={() => onFightBlock(false)}
+                  onPointerCancel={() => onFightBlock(false)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border ${
+                    hud.activeFightClub.blocking
+                      ? 'bg-sky-400 text-neutral-950 border-sky-300'
+                      : 'bg-white/10 text-white border-white/20'
+                  }`}
+                >
+                  {t(lang, 'blockBtn')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onFightDodge}
+                  className="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold cursor-pointer"
+                >
+                  {t(lang, 'dodgeBtn')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hud.walletChoicePending && (
+            <div className="bg-[#111420]/96 border border-sky-400/55 rounded-xl px-3 py-2 flex flex-col items-center gap-1.5 max-w-[92vw] shadow-xl">
+              <div className="text-[11px] text-neutral-200 font-medium text-center">
+                Recovered {hud.walletChoicePending.victimName}&apos;s Wallet (${hud.walletChoicePending.amount})
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onResolveWalletChoice(true)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer"
+                >
+                  {t(lang, 'keepWallet')} (+${hud.walletChoicePending.amount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onResolveWalletChoice(false)}
+                  className="px-3 py-1.5 rounded-lg bg-[#2dd4bf] hover:bg-[#14b8a6] text-neutral-950 font-bold text-xs cursor-pointer"
+                >
+                  {t(lang, 'returnWallet')} (+$250 &amp; Clout)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hud.fishingHud.active && (
+            <div className="bg-[#0d1720]/94 border border-cyan-400/55 rounded-xl px-3 py-2 flex flex-col items-center gap-1.5 max-w-[92vw] shadow-xl">
+              <div className="flex items-center gap-2.5 text-[11px] font-mono-num">
+                <span className="font-bold text-cyan-300">
+                  {hud.fishingHud.state === 'idle'
+                    ? 'PIER FISHING READY'
+                    : hud.fishingHud.state === 'waiting'
+                    ? 'LINE CAST · WATCH BOBBER'
+                    : hud.fishingHud.state === 'biting'
+                    ? 'FISH BITING! REEL NOW!'
+                    : 'REELING IN CATCH'}
+                </span>
+                <span className="text-emerald-300">
+                  Bag: {hud.fishingHud.caughtCount} (${hud.fishingHud.bagValue})
+                </span>
+              </div>
+              {hud.fishingHud.state === 'reeling' && (
+                <div className="w-44 h-2 bg-neutral-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${
+                      hud.fishingHud.tension > 78 ? 'bg-rose-500' : 'bg-cyan-400'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round(hud.fishingHud.tension))}%` }}
+                  />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onFishingAction}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                    hud.fishingHud.state === 'biting' || hud.fishingHud.state === 'reeling'
+                      ? 'bg-emerald-400 hover:bg-emerald-300 text-neutral-950'
+                      : 'bg-cyan-400 hover:bg-cyan-300 text-neutral-950'
+                  }`}
+                >
+                  {hud.fishingHud.state === 'idle' ? t(lang, 'castLine') : t(lang, 'reelFish')}
+                </button>
+                {hud.contextKind === 'sell_fish' && (
+                  <button
+                    type="button"
+                    onClick={onSellFish}
+                    className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold cursor-pointer"
+                  >
+                    {t(lang, 'sellFish')}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!hud.fishingHud.active && hud.contextKind === 'sell_fish' && (
+            <button
+              type="button"
+              onClick={onSellFish}
+              className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-display font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer"
+            >
+              {t(lang, 'sellFish')} (${hud.fishingHud.bagValue})
+            </button>
+          )}
+
+          {(hud.contextKind === 'street_race' ||
+            hud.contextKind === 'fight_club' ||
+            hud.contextKind === 'armored_cash') &&
+            hud.contextAction && (
+              <button
+                type="button"
+                onClick={onContextAction}
+                className="px-4 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#14b8a6] text-neutral-950 font-display font-extrabold text-xs sm:text-sm shadow-xl cursor-pointer"
+              >
+                {hud.contextAction}
+              </button>
+            )}
 
           {hud.contextPrompt && (
             <div className="bg-[#11131d]/95 border border-amber-400/50 text-amber-200 text-xs font-medium px-3 sm:px-4 py-1.5 rounded-lg max-w-[88vw] text-center whitespace-normal sm:whitespace-nowrap">

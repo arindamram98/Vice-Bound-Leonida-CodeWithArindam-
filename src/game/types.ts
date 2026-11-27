@@ -450,7 +450,14 @@ export type MinimapEntityKind =
   | 'burgershot'
   | 'taxistand'
   | 'bank'
-  | 'drop';
+  | 'drop'
+  | 'event_blue'
+  | 'event_red'
+  | 'stunt'
+  | 'race'
+  | 'fightclub'
+  | 'briefcase'
+  | 'fishing';
 
 export interface MinimapEntity {
   x: number;
@@ -491,6 +498,70 @@ export interface FlightCutsceneState {
   progress: number;
 }
 
+export interface DynamicWorldEventHud {
+  id: string;
+  kind: 'atm_mugger' | 'armored_van' | 'gang_ambush' | 'vip_hitchhiker';
+  title: string;
+  subtitle: string;
+  x: number;
+  z: number;
+  blipColor: 'blue' | 'red';
+  timerSec: number;
+}
+
+export interface WalletChoiceHud {
+  amount: number;
+  victimName: string;
+}
+
+export interface StuntBannerHud {
+  name: string;
+  distanceM: number;
+  heightM: number;
+  bonusCash: number;
+  active: boolean;
+}
+
+export interface ActiveRaceHud {
+  name: string;
+  checkpointIndex: number;
+  totalCheckpoints: number;
+  position: number;
+  totalRacers: number;
+  wager: number;
+  elapsedSec: number;
+}
+
+export interface ActiveFightClubHud {
+  wave: number;
+  opponentsAlive: number;
+  prizePool: number;
+  blocking: boolean;
+  dodging: boolean;
+}
+
+export interface FishingHudState {
+  active: boolean;
+  state: 'idle' | 'waiting' | 'biting' | 'reeling';
+  tension: number;
+  biteProgress: number;
+  caughtCount: number;
+  bagValue: number;
+  lastCatchName: string | null;
+}
+
+export interface VipContractDef {
+  id: string;
+  title: string;
+  minClout: number;
+  rewardCash: number;
+  district: string;
+  x: number;
+  z: number;
+  active: boolean;
+  completed: boolean;
+}
+
 export interface HudSnapshot {
   screen: 'title' | 'playing' | 'wasted' | 'busted';
   activeId: ProtagonistId;
@@ -529,6 +600,13 @@ export interface HudSnapshot {
     | 'take_cash_bag'
     | 'deliver_burger'
     | 'eat_burger'
+    | 'wallet_choice'
+    | 'armored_cash'
+    | 'hitchhiker'
+    | 'street_race'
+    | 'fight_club'
+    | 'fishing_pier'
+    | 'sell_fish'
     | null;
   robberyHud: {
     stage: 'none' | 'intimidated' | 'packing' | 'bag_ready';
@@ -558,4 +636,15 @@ export interface HudSnapshot {
   totalInteriorsCount: number;
   underwaterTreasureFound: number;
   messages: ChatMessage[];
+  activeDynamicEvent: DynamicWorldEventHud | null;
+  walletChoicePending: WalletChoiceHud | null;
+  stuntBanner: StuntBannerHud | null;
+  activeRace: ActiveRaceHud | null;
+  activeFightClub: ActiveFightClubHud | null;
+  fishingHud: FishingHudState;
+  collectiblesFound: number;
+  goldSkinUnlocked: boolean;
+  cloutTierLabel: string;
+  profileDiscountPct: number;
+  vipContracts: VipContractDef[];
 }

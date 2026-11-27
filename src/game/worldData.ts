@@ -1962,3 +1962,146 @@ export function getDistrictAt(x: number, z: number): string {
   if (x > 1420) return 'Ocean Drive';
   return 'Vice Downtown';
 }
+
+// ─── GTA VI OPEN-WORLD HOBBIES, STUNT JUMPS, RACES, FIGHT CLUB & COLLECTIBLES ──
+
+export interface StuntRampDef {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+  yaw: number;
+  width: number;
+  length: number;
+  height: number;
+}
+
+export const STUNT_RAMPS: StuntRampDef[] = [
+  { id: 'ramp_1', name: 'Central Highway Bridge Launch', x: 0, z: 590, yaw: Math.PI, width: 7.5, length: 13, height: 3.1 },
+  { id: 'ramp_2', name: 'Northport Bridge Approach', x: 0, z: -590, yaw: 0, width: 7.5, length: 13, height: 3.1 },
+  { id: 'ramp_3', name: 'Ocean Drive Dune Booster', x: 1695, z: 760, yaw: 0, width: 7.0, length: 12, height: 2.9 },
+  { id: 'ramp_4', name: 'East Beach Boardwalk Gap', x: 1695, z: 1480, yaw: Math.PI, width: 7.0, length: 12, height: 2.9 },
+  { id: 'ramp_5', name: 'Port Vice Container Ramp', x: 1580, z: 1920, yaw: -Math.PI / 2, width: 7.0, length: 12, height: 3.0 },
+  { id: 'ramp_6', name: 'Downtown Boulevard Overpass', x: 350, z: 1400, yaw: Math.PI / 2, width: 7.0, length: 12, height: 2.8 },
+  { id: 'ramp_7', name: 'Midtown Crossroad Air', x: -350, z: 700, yaw: -Math.PI / 2, width: 7.0, length: 12, height: 2.8 },
+  { id: 'ramp_8', name: 'South Vice Runway Mega Jump', x: -2020, z: 1365, yaw: -Math.PI / 2, width: 9.0, length: 15, height: 3.6 },
+  { id: 'ramp_9', name: 'Northport Runway Thrill Ramp', x: -2020, z: -1365, yaw: -Math.PI / 2, width: 9.0, length: 15, height: 3.6 },
+  { id: 'ramp_10', name: 'West Avenue Channel Leap', x: -700, z: 530, yaw: Math.PI, width: 7.0, length: 12, height: 3.0 },
+  { id: 'ramp_11', name: 'Northport Industrial Jump', x: -700, z: -1400, yaw: Math.PI / 2, width: 7.0, length: 12, height: 2.8 },
+  { id: 'ramp_12', name: 'Paleto Pine Highway Kicker', x: 0, z: -2160, yaw: Math.PI, width: 7.5, length: 13, height: 3.1 },
+  { id: 'ramp_13', name: 'Harbor Pier Boat Sky-Ramp', x: 1795, z: 1748, yaw: Math.PI / 2, width: 6.5, length: 11, height: 2.6 },
+  { id: 'ramp_14', name: 'Ocean Channel North Lip', x: 700, z: -490, yaw: 0, width: 7.0, length: 12, height: 2.9 },
+  { id: 'ramp_15', name: 'South Boulevard Drift Ramp', x: 1050, z: 2100, yaw: -Math.PI / 2, width: 7.0, length: 12, height: 2.8 },
+];
+
+export interface BriefcaseSpot {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const BRIEFCASE_LOCATIONS: BriefcaseSpot[] = [
+  { id: 'bc_01', label: "Jason's Villa Rooftop Terrace", x: 1052, y: 5.2, z: 1044 },
+  { id: 'bc_02', label: 'Grand Highway Bridge Center Span', x: 11, y: 11.7, z: 0 },
+  { id: 'bc_03', label: 'Port Vice Pier End', x: 1850, y: 0.45, z: 1750 },
+  { id: 'bc_04', label: 'Northport Harbor Dock Tip', x: 328, y: 0.45, z: -424 },
+  { id: 'bc_05', label: 'Paradise Key Infinity Pool Edge', x: 2650, y: 0.45, z: 1086 },
+  { id: 'bc_06', label: 'Starlight Atoll Back Deck', x: 2650, y: 0.45, z: -1080 },
+  { id: 'bc_07', label: 'Leonida Central Park Fountain', x: 356, y: 0.25, z: 1756 },
+  { id: 'bc_08', label: 'Vice Reserve Bank Alley', x: 1072, y: 0.25, z: 1752 },
+  { id: 'bc_09', label: 'Vangelico Jewelry Roof Terrace', x: -350, y: 5.2, z: 1750 },
+  { id: 'bc_10', label: 'Vice PD Precinct Helipad Yard', x: -372, y: 0.25, z: 1040 },
+  { id: 'bc_11', label: 'Burger Shot Drive-Thru Signpost', x: 368, y: 0.25, z: 1052 },
+  { id: 'bc_12', label: 'South Vice Airport Hangar Apron', x: -2140, y: 0.25, z: 1245 },
+  { id: 'bc_13', label: 'Northport Airport Control Tower Base', x: -1870, y: 0.25, z: -1305 },
+  { id: 'bc_14', label: 'Ocean Drive Lifeguard Sands', x: 1752, y: 0.25, z: 1050 },
+  { id: 'bc_15', label: 'Northport Exotic Motors Showroom Back', x: 372, y: 0.25, z: -1050 },
+  { id: 'bc_16', label: 'Uncle Jack Chop Shop Stash', x: -1242, y: 0.25, z: -885 },
+  { id: 'bc_17', label: 'Paleto Pine Ranger Cabin Porch', x: 355, y: 0.25, z: -2336 },
+  { id: 'bc_18', label: 'Vice Iron Gym Dumbbell Courtyard', x: 1068, y: 0.25, z: 2405 },
+  { id: 'bc_19', label: 'Ocean Beach Basketball Bleachers', x: 1685, y: 0.25, z: 896 },
+  { id: 'bc_20', label: 'West Downtown Royals Turf Alley', x: -1072, y: 0.25, z: 1445 },
+  { id: 'bc_21', label: 'Northport Skulls Pier Yard', x: -1072, y: 0.25, z: -1120 },
+  { id: 'bc_22', label: 'Paradise Key Western Jetty', x: 2386, y: 0.45, z: 1100 },
+  { id: 'bc_23', label: 'Starlight Atoll Western Jetty', x: 2386, y: 0.45, z: -1100 },
+  { id: 'bc_24', label: 'Paleto Bayou Log Crossing', x: -690, y: 0.25, z: -2450 },
+  { id: 'bc_25', label: 'Grand Highway South Toll Arch', x: -11, y: 0.25, z: 455 },
+];
+
+export const FIGHT_CLUB_ARENA = {
+  id: 'fight_club_northport',
+  name: 'Northport Underground Fight Club',
+  x: -1205,
+  z: -852,
+  radius: 6.5,
+};
+
+export interface StreetRaceCircuit {
+  id: string;
+  name: string;
+  startX: number;
+  startZ: number;
+  startYaw: number;
+  wager: number;
+  rewardFirst: number;
+  checkpoints: Array<{ x: number; z: number }>;
+}
+
+export const MIDNIGHT_RACE_CIRCUIT: StreetRaceCircuit = {
+  id: 'race_midnight_leonida',
+  name: 'Midnight Vice Street Circuit',
+  startX: 0,
+  startZ: 740,
+  startYaw: 0,
+  wager: 800,
+  rewardFirst: 3800,
+  checkpoints: [
+    { x: 0, z: 1090 },
+    { x: 0, z: 1400 },
+    { x: 350, z: 1400 },
+    { x: 700, z: 1400 },
+    { x: 700, z: 1090 },
+    { x: 700, z: 700 },
+    { x: 350, z: 700 },
+    { x: 0, z: 700 },
+  ],
+};
+
+export const INITIAL_VIP_CONTRACTS = [
+  {
+    id: 'vip_1',
+    title: 'VIP Yacht Escort Courier',
+    minClout: 350,
+    rewardCash: 2800,
+    district: 'Vice Marina',
+    x: 1620,
+    z: 1750,
+    active: false,
+    completed: false,
+  },
+  {
+    id: 'vip_2',
+    title: 'High-Roller Penthouse Protection',
+    minClout: 600,
+    rewardCash: 4500,
+    district: 'Vice Downtown',
+    x: 1050,
+    z: 1750,
+    active: false,
+    completed: false,
+  },
+  {
+    id: 'vip_3',
+    title: 'Leonida Syndicate Airlift Drop',
+    minClout: 950,
+    rewardCash: 7200,
+    district: 'Northport Airport',
+    x: -1850,
+    z: -1365,
+    active: false,
+    completed: false,
+  },
+];
+
